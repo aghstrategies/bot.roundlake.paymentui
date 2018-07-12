@@ -213,23 +213,31 @@ class CRM_Paymentui_Form_Paymentui extends CRM_Core_Form {
     // $payment = CRM_Core_Payment::singleton($this->_mode, $this->_paymentProcessor, $this);
     $payment = Civi\Payment\System::singleton()->getByProcessor($this->_paymentProcessor);
 
-    $result  = $payment->doDirectPayment($paymentParams);
-    $CCFinancialTrxn = CRM_Paymentui_BAO_Paymentui::createFinancialTrxn($paymentParams);
+    $result = $payment->doDirectPayment($paymentParams);
+    if (!empty($result->_errors)) {
+      foreach ($result->_errors as $key => $errorDetails) {
+        if (!empty($errorDetails['message'])) {
+          CRM_Core_Session::setStatus(ts($errorDetails['message']), '', 'no-popup');
+        }
+      }
+    }
+    elseif (!empty($result['amount'])) {
+      $CCFinancialTrxn = CRM_Paymentui_BAO_Paymentui::createFinancialTrxn($paymentParams);
+      $partialPaymentInfo = $this->_participantInfo;
+      //Process all the partial payments and update the records
+      $paymentProcessedInfo = paymentui_civicrm_process_partial_payments($paymentParams, $this->_participantInfo);
+      // example: https://github.com/civicrm/civicrm-core/blob/648631cd94799e87fe2347487d465b1a7256aa57/tests/phpunit/CRM/Core/Config/MailerTest.php#L75
+      parent::postProcess();
 
-    $partialPaymentInfo = $this->_participantInfo;
-    //Process all the partial payments and update the records
-    $paymentProcessedInfo = paymentui_civicrm_process_partial_payments($paymentParams, $this->_participantInfo);
-    // example: https://github.com/civicrm/civicrm-core/blob/648631cd94799e87fe2347487d465b1a7256aa57/tests/phpunit/CRM/Core/Config/MailerTest.php#L75
-    parent::postProcess();
+      //Define status message
+      $statusMsg = ts('The payment(s) have been processed successfully.');
+      CRM_Core_Session::setStatus($statusMsg, ts('Saved'), 'success');
 
-    //Define status message
-    $statusMsg = ts('The payment(s) have been processed successfully.');
-    CRM_Core_Session::setStatus($statusMsg, ts('Saved'), 'success');
-
-    //Redirect to the same URL
-    $url     = CRM_Utils_System::url('civicrm/addpayment', "reset=1");
-    $session = CRM_Core_Session::singleton();
-    CRM_Utils_System::redirect($url);
+      //Redirect to the same URL
+      $url     = CRM_Utils_System::url('civicrm/addpayment', "reset=1");
+      $session = CRM_Core_Session::singleton();
+      CRM_Utils_System::redirect($url);
+    }
   }
 
   /**
