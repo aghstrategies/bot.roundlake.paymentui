@@ -16,6 +16,7 @@ Differences between this extension and Backoffice Originals:
 + Creates a settings page: civicrm/paymentui/feessettings where one can set the processing fee and the late fee
 + Tokens: generates two tokens: {partialPayment.simpleTable} and {partialPayment.table} that generates the tables the user sees when on the payment page as tokens to be used in emails and for invoices.
 + Sets default amount paid input text to be the amount owed if late plus the amount for the next payment
++ Ignores any [com.joineryhq.percentagepricesetfield](https://github.com/twomice/com.joineryhq.percentagepricesetfield) line items from totals
 
 ## Settings for this extension:
 
