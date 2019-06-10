@@ -36,14 +36,24 @@ HERESQL;
         if ($paymentDetails['balance'] == 0) {
           $paymentSched['totalDue'] = 0;
         }
+
+        // TODO subtract ccfees added by the percentage price field extension
+        $ccFeesSQL = <<<HERESQL
+        SELECT line_total FROM `civicrm_line_item` as li
+JOIN `civicrm_percentagepricesetfield` as p
+ON li.price_field_id = p.field_id
+WHERE li.contribution_id = $dao->contribution_id
+HERESQL;
+        $percentagePriceFee = CRM_Core_DAO::singleValueQuery($ccFeesSQL);
+
         //Create an array with all the participant and payment information
         $participantInfo[$dao->id]['pid']             = $dao->id;
         $participantInfo[$dao->id]['cid']             = $dao->contact_id;
         $participantInfo[$dao->id]['contribution_id'] = $dao->contribution_id;
         $participantInfo[$dao->id]['event_name']      = $dao->title;
         $participantInfo[$dao->id]['contact_name']    = $displayNames;
-        $participantInfo[$dao->id]['total_amount']    = $paymentDetails['total'];
-        $participantInfo[$dao->id]['paid']            = $paymentDetails['paid'];
+        $participantInfo[$dao->id]['total_amount']    = $paymentDetails['total'] - $percentagePriceFee;
+        $participantInfo[$dao->id]['paid']            = $paymentDetails['paid'] - $percentagePriceFee;
         $participantInfo[$dao->id]['balance']         = $paymentDetails['balance'];
         $participantInfo[$dao->id]['latefees']        = $paymentSched['lateFee'];
         $participantInfo[$dao->id]['nextDueDate']     = $paymentSched['nextDueDate'];
