@@ -176,11 +176,12 @@ class CRM_Paymentui_Form_Paymentui extends CRM_Core_Form {
     $config = CRM_Core_Config::singleton();
     $lateFees = 0;
     $fees = CRM_Paymentui_BAO_Paymentui::getFeesFromSettings();
-    $processingFee = 1;
+    $processingFee = 4;
     $totalProcessingFee = 0;
     if (!empty($fees['processing_fee'])) {
-      $processingFee = $fees['processing_fee'] / 100;
+      $processingFee = $fees['processing_fee'];
     }
+    $processingFee = $processingFee / 100;
     //Calculate total amount paid and individual amount for each contribution
     foreach ($this->_params['payment'] as $pid => $pVal) {
       // add together partial pay amounts
@@ -197,7 +198,7 @@ class CRM_Paymentui_Form_Paymentui extends CRM_Core_Form {
     //Building params for CC processing
     $this->_params["state_province-{$this->_bltID}"] = $this->_params["billing_state_province-{$this->_bltID}"] = CRM_Core_PseudoConstant::stateProvinceAbbreviation($this->_params["billing_state_province_id-{$this->_bltID}"]);
 
-    $this->_params["country-{$this->_bltID}"]        = $this->_params["billing_country-{$this->_bltID}"] = CRM_Core_PseudoConstant::countryIsoCode($this->_params["billing_country_id-{$this->_bltID}"]);
+    $this->_params["country-{$this->_bltID}"] = $this->_params["billing_country-{$this->_bltID}"] = CRM_Core_PseudoConstant::countryIsoCode($this->_params["billing_country_id-{$this->_bltID}"]);
 
     $this->_params['year']           = CRM_Core_Payment_Form::getCreditCardExpirationYear($this->_params);
     $this->_params['month']          = CRM_Core_Payment_Form::getCreditCardExpirationMonth($this->_params);
