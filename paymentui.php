@@ -80,7 +80,11 @@ function paymentui_civicrm_process_partial_payments($paymentParams, $participant
       $paymentParams['payment_instrument_id'] = 1;
 
       //Add additional financial transactions for each partial payment
-      $trxnRecord = CRM_Contribute_BAO_Contribution::recordAdditionalPayment($pInfo['contribution_id'], $paymentParams, 'owed', $pId);
+      // $trxnRecord = CRM_Paymentui_BAO_Paymentui::recordAdditionalPayment($pInfo['contribution_id'], $paymentParams, 'owed', $pId);
+      $paymentParams['participant_id'] = $pId;
+      $paymentParams['contribution_id'] = $pInfo['contribution_id'];
+      $paymentParams['is_send_contribution_notification'] = FALSE;
+      $trxnRecord = civicrm_api3('Payment', 'create', $paymentParams)['id'];
 
       if ($trxnRecord->id) {
         $participantInfo[$pId]['success'] = 1;
