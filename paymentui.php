@@ -106,11 +106,13 @@ function paymentui_civicrm_process_partial_payments($paymentParams, $participant
     }
     if (!empty($pInfo['partial_payment_pay'])) {
       // Processing Fee 4%
-      $processingFee = 1;
+      $processingFee = 4;
+      // IF setting exists pull from the settings form
       $fees = CRM_Paymentui_BAO_Paymentui::getFeesFromSettings();
       if (!empty($fees['processing_fee'])) {
-        $processingFee = $fees['processing_fee'] / 100;
+        $processingFee = $fees['processing_fee'];
       }
+      $processingFee = $processingFee / 100;
       $processingFeeForPayment = $processingFeeForPayment + round($pInfo['partial_payment_pay'] * $processingFee, 2);
     }
   }
