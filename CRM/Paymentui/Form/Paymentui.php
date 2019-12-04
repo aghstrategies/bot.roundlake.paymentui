@@ -215,6 +215,10 @@ class CRM_Paymentui_Form_Paymentui extends CRM_Core_Form {
     $payment = Civi\Payment\System::singleton()->getByProcessor($this->_paymentProcessor);
 
     $result = $payment->doDirectPayment($paymentParams);
+    $paymentParamsToPrintToLog = $paymentParams;
+    unset($paymentParamsToPrintToLog['credit_card_number']);
+    CRM_Core_Error::debug_var('Info sent to Authorize.net from the partial payment form', $paymentParamsToPrintToLog);
+
     if (!empty($result->_errors)) {
       foreach ($result->_errors as $key => $errorDetails) {
         if (!empty($errorDetails['message'])) {
@@ -225,6 +229,8 @@ class CRM_Paymentui_Form_Paymentui extends CRM_Core_Form {
     elseif (!empty($result['amount'])) {
       $CCFinancialTrxn = CRM_Paymentui_BAO_Paymentui::createFinancialTrxn($paymentParams);
       $partialPaymentInfo = $this->_participantInfo;
+      CRM_Core_Error::debug_var('Participant Info', $this->_participantInfo);
+
       //Process all the partial payments and update the records
       $paymentProcessedInfo = paymentui_civicrm_process_partial_payments($paymentParams, $this->_participantInfo);
       // example: https://github.com/civicrm/civicrm-core/blob/648631cd94799e87fe2347487d465b1a7256aa57/tests/phpunit/CRM/Core/Config/MailerTest.php#L75
