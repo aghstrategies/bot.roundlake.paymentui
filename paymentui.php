@@ -3,7 +3,7 @@
 require_once 'paymentui.civix.php';
 
 /**
- * Implementation of hook_civicrm_tokens
+ * Implements hook_civicrm_tokens().
  *
  * @link http://wiki.civicrm.org/confluence/display/CRMDOC/hook_civicrm_tokens
  */
@@ -16,7 +16,7 @@ function paymentui_civicrm_tokens(&$tokens) {
 }
 
 /**
- * Implementation of hook_civicrm_tokenValues
+ * Implements hook_civicrm_tokenValues().
  *
  * @link http://wiki.civicrm.org/confluence/display/CRMDOC/hook_civicrm_tokenValues
  */
@@ -84,7 +84,15 @@ function paymentui_civicrm_process_partial_payments($paymentParams, $participant
       $paymentParams['participant_id'] = $pId;
       $paymentParams['contribution_id'] = $pInfo['contribution_id'];
       $paymentParams['is_send_contribution_notification'] = FALSE;
-      $trxnRecord = civicrm_api3('Payment', 'create', $paymentParams)['id'];
+      try {
+        $trxnRecord = civicrm_api3('Payment', 'create', $paymentParams)['id'];
+      }
+      catch (CiviCRM_API3_Exception $e) {
+        $error = $e->getMessage();
+        CRM_Core_Error::debug_log_message(
+          ts('API Error: %1', array(1 => $error, 'domain' => 'bot.roundlake.paymentui'))
+        );
+      }
 
       if ($trxnRecord->id) {
         $participantInfo[$pId]['success'] = 1;
@@ -103,9 +111,9 @@ function paymentui_civicrm_process_partial_payments($paymentParams, $participant
       }
       catch (CiviCRM_API3_Exception $e) {
         $error = $e->getMessage();
-        CRM_Core_Error::debug_log_message(ts('API Error %1', array(
-          'domain' => 'bot.roundlake.paymentui',
-        )));
+        CRM_Core_Error::debug_log_message(
+          ts('API Error: %1', array(1 => $error, 'domain' => 'bot.roundlake.paymentui'))
+        );
       }
     }
     if (!empty($pInfo['partial_payment_pay'])) {
@@ -133,9 +141,9 @@ function paymentui_civicrm_process_partial_payments($paymentParams, $participant
   }
   catch (CiviCRM_API3_Exception $e) {
     $error = $e->getMessage();
-    CRM_Core_Error::debug_log_message(ts('API Error %1', array(
-      'domain' => 'bot.roundlake.paymentui',
-    )));
+    CRM_Core_Error::debug_log_message(
+      ts('API Error: %1', array(1 => $error, 'domain' => 'bot.roundlake.paymentui'))
+    );
   }
   $receiptTable = CRM_Paymentui_BAO_Paymentui::buildEmailTable($participantInfo, $receipt = TRUE, $processingFeeForPayment);
   $body = "<p>Thank you for completing your payment. See details below:</p>
