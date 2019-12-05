@@ -56,6 +56,7 @@ class CRM_Paymentui_Form_Paymentui extends CRM_Core_Form {
    */
   public function buildQuickForm() {
     CRM_Core_Resources::singleton()->addScriptFile('bot.roundlake.paymentui', 'js/paymentui.js');
+    // TODO should this be 0 everywhere?
     $processingFee = 0;
     $fees = CRM_Paymentui_BAO_Paymentui::getFeesFromSettings();
     if (!empty($fees['processing_fee'])) {
@@ -77,6 +78,7 @@ class CRM_Paymentui_Form_Paymentui extends CRM_Core_Form {
     $this->assign('contactId', $this->_contactId);
     $displayName = CRM_Contact_BAO_Contact::displayName($this->_contactId);
     $this->assign('displayName', $displayName);
+
     //Set column headers for the table
     $columnHeaders = array('Event', 'Registrant', 'Cost', 'Paid to Date', '$$ remaining', 'Make Payment');
     $this->assign('columnHeaders', $columnHeaders);
