@@ -6,6 +6,7 @@
  * @see https://wiki.civicrm.org/confluence/display/CRMDOC/QuickForm+Reference
  */
 class CRM_Paymentui_Form_FeesSettings extends CRM_Core_Form {
+
   public function buildQuickForm() {
 
     // add form elements
