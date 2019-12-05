@@ -8,23 +8,34 @@
 class CRM_Paymentui_BAO_Paymentui extends CRM_Event_DAO_Participant {
 
   /**
+   * Shortcut for api calls
+   * @param  string $entity Entity
+   * @param  string $action Action
+   * @param  array $params params
+   * @return array         results
+   */
+  public static function apishortcut($entity, $action, $params) {
+    try {
+      $result = civicrm_api3($entity, $action, $params);
+    }
+    catch (CiviCRM_API3_Exception $e) {
+      $error = $e->getMessage();
+      CRM_Core_Error::debug_log_message(
+        ts('API Error: %1', array(1 => $error, 'domain' => 'bot.roundlake.paymentui'))
+      );
+    }
+    return $result;
+  }
+
+  /**
    * Get ids of participant statuses we care about
    * @return string of participant ids separated by commas
    */
   public static function getParticipantStatuses() {
     $statusesWeCareAbout = [];
-    try {
-      $pstatuses = civicrm_api3('ParticipantStatusType', 'get', [
-        'name' => ['IN' => ["Pending from pay later", "Partially paid"]],
-      ]);
-    }
-    catch (CiviCRM_API3_Exception $e) {
-      $error = $e->getMessage();
-      CRM_Core_Error::debug_log_message(ts('API Error %1', array(
-        'domain' => 'bot.roundlake.paymentui',
-        1 => $error,
-      )));
-    }
+    $pstatuses = self::apishortcut('ParticipantStatusType', 'get', [
+      'name' => ['IN' => ["Pending from pay later", "Partially paid"]],
+    ]);
     if (!empty($pstatuses['values'])) {
       $statusesWeCareAbout = array_keys($pstatuses['values']);
     }
@@ -110,23 +121,14 @@ HERESQL;
       $return['nextDueDate'] = ts('All Paid', array('domain' => 'bot.roundlake.paymentui'));
     }
     else {
-      try {
-        $lateFeeSchedule = civicrm_api3('CustomField', 'getSingle', array(
-          'sequential' => 1,
-          'return' => array("id"),
-          'name' => "event_late_fees",
-          'api.Event.getsingle' => array(
-            'id' => $eventId,
-          ),
-        ));
-      }
-      catch (CiviCRM_API3_Exception $e) {
-        $error = $e->getMessage();
-        CRM_Core_Error::debug_log_message(ts('API Error %1', array(
-          'domain' => 'bot.roundlake.paymentui',
-          1 => $error,
-        )));
-      }
+      $lateFeeSchedule = self::apishortcut('CustomField', 'getSingle', array(
+        'sequential' => 1,
+        'return' => array("id"),
+        'name' => "event_late_fees",
+        'api.Event.getsingle' => array(
+          'id' => $eventId,
+        ),
+      ));
       if (!empty($lateFeeSchedule['api.Event.getsingle']["custom_{$lateFeeSchedule['id']}"])) {
         $fees = self::getFeesFromSettings();
         $feeAmount = CRM_Utils_Array::value('late_fee', $fees, 0);
@@ -208,21 +210,12 @@ HERESQL;
    * Checks for Child, Spouse, Child/Ward relationship types
    */
   public static function getRelatedContacts($contactID) {
-    try {
-      $result = civicrm_api3('Relationship', 'get', array(
-        'sequential' => 1,
-        'relationship_type_id' => 1,
-        'contact_id_b' => $contactID,
-        'contact_id_a.is_deleted' => 0,
-      ));
-    }
-    catch (CiviCRM_API3_Exception $e) {
-      $error = $e->getMessage();
-      CRM_Core_Error::debug_log_message(ts('API Error %1', array(
-        'domain' => 'bot.roundlake.paymentui',
-        1 => $error,
-      )));
-    }
+    $result = self::apishortcut('Relationship', 'get', array(
+      'sequential' => 1,
+      'relationship_type_id' => 1,
+      'contact_id_b' => $contactID,
+      'contact_id_a.is_deleted' => 0,
+    ));
     if (!empty($result['values'])) {
       $relatedContactIDs = array();
       foreach ($result['values'] as $relatedContact => $value) {
@@ -284,18 +277,10 @@ HERESQL;
 
   public static function getFeesFromSettings() {
     $fees = array();
-    try {
-      $existingSetting = civicrm_api3('Setting', 'get', array(
-        'sequential' => 1,
-        'return' => array("paymentui_processingfee", "paymentui_latefee"),
-      ));
-    }
-    catch (CiviCRM_API3_Exception $e) {
-      $error = $e->getMessage();
-      CRM_Core_Error::debug_log_message(
-        ts('API Error: %1', array(1 => $error, 'domain' => 'bot.roundlake.paymentui'))
-      );
-    }
+    $existingSetting = self::apishortcut('Setting', 'get', array(
+      'sequential' => 1,
+      'return' => array("paymentui_processingfee", "paymentui_latefee"),
+    ));
     if (!empty($existingSetting['values'][0]['paymentui_processingfee'])) {
       $fees['processing_fee'] = $existingSetting['values'][0]['paymentui_processingfee'];
     }

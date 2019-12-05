@@ -43,16 +43,10 @@ class CRM_Paymentui_Form_FeesSettings extends CRM_Core_Form {
     $this->assign('elementNames', $this->getRenderableElementNames());
     // Set Defaults
     $defaults = array();
-    try {
-      $existingSetting = civicrm_api3('Setting', 'get', array(
-        'sequential' => 1,
-        'return' => array("paymentui_processingfee", "paymentui_latefee", "paymentui_processor"),
-      ));
-    }
-    catch (CiviCRM_API3_Exception $e) {
-      $error = $e->getMessage();
-      CRM_Core_Error::debug_log_message(ts('API Error: %1', array(1 => $error, 'domain' => 'bot.roundlake.paymentui')));
-    }
+    $existingSetting = CRM_Paymentui_BAO_Paymentui::apishortcut('Setting', 'get', array(
+      'sequential' => 1,
+      'return' => array("paymentui_processingfee", "paymentui_latefee", "paymentui_processor"),
+    ));
     if (!empty($existingSetting['values'][0]['paymentui_processingfee'])) {
       $defaults['processing_fee'] = $existingSetting['values'][0]['paymentui_processingfee'];
     }
@@ -79,15 +73,7 @@ class CRM_Paymentui_Form_FeesSettings extends CRM_Core_Form {
       $params['paymentui_processor'] = $values['payment_processor'];
     }
     if (!empty($params)) {
-      try {
-        $existingSetting = civicrm_api3('Setting', 'create', $params);
-      }
-      catch (CiviCRM_API3_Exception $e) {
-        $error = $e->getMessage();
-        CRM_Core_Error::debug_log_message(
-          ts('API Error: %1', array(1 => $error, 'domain' => 'bot.roundlake.paymentui'))
-        );
-      }
+      $existingSetting = CRM_Paymentui_BAO_Paymentui::apishortcut('Setting', 'create', $params);
       CRM_Core_Session::setStatus(ts('The Processing fee is now set to "%1"', array(
         1 => $values['processing_fee'],
       )));

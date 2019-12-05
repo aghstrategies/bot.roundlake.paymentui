@@ -29,18 +29,10 @@ class CRM_Paymentui_Form_Paymentui extends CRM_Core_Form {
     $processors = CRM_Financial_BAO_PaymentProcessor::getPaymentProcessors($capabilities = array('LiveMode'), $ids = FALSE);
     $processorToUse = CRM_Financial_BAO_PaymentProcessor::getDefault()->id;
     //get payment processor from setting
-    try {
-      $paymentProcessorSetting = civicrm_api3('Setting', 'get', array(
-        'sequential' => 1,
-        'return' => array("paymentui_processor"),
-      ));
-    }
-    catch (CiviCRM_API3_Exception $e) {
-      $error = $e->getMessage();
-      CRM_Core_Error::debug_log_message(
-        ts('API Error: %1', array(1 => $error, 'domain' => 'bot.roundlake.paymentui'))
-      );
-    }
+    $paymentProcessorSetting = CRM_Paymentui_BAO_Paymentui::apishortcut('Setting', 'get', array(
+      'sequential' => 1,
+      'return' => array("paymentui_processor"),
+    ));
     if (!empty($paymentProcessorSetting['values'][0]['paymentui_processor'])) {
       $processorToUse = $paymentProcessorSetting['values'][0]['paymentui_processor'];
     }
@@ -184,6 +176,7 @@ class CRM_Paymentui_Form_Paymentui extends CRM_Core_Form {
       $processingFee = $fees['processing_fee'];
     }
     $processingFee = $processingFee / 100;
+
     //Calculate total amount paid and individual amount for each contribution
     foreach ($this->_params['payment'] as $pid => $pVal) {
       // add together partial pay amounts
@@ -211,24 +204,25 @@ class CRM_Paymentui_Form_Paymentui extends CRM_Core_Form {
     $this->_params['payment_action'] = 'Sale';
     $this->_params['invoiceID']      = md5(uniqid(rand(), TRUE));
 
+    // TODO verify this is an id
+    $this->_params['payment_processor_id'] = $this->_paymentProcessor;
+
     $paymentParams = $this->_params;
     CRM_Core_Payment_Form::mapParams($this->_bltID, $this->_params, $paymentParams, TRUE);
     // $payment = CRM_Core_Payment::singleton($this->_mode, $this->_paymentProcessor, $this);
-    $payment = Civi\Payment\System::singleton()->getByProcessor($this->_paymentProcessor);
+    // $payment = Civi\Payment\System::singleton()->getByProcessor($this->_paymentProcessor);
+    // $result = $payment->doDirectPayment($paymentParams);
+    $pay = CRM_Paymentui_BAO_Paymentui::apishortcut('PaymentProcessor', 'pay', $paymentParams);
 
-    $result = $payment->doDirectPayment($paymentParams);
+    // Log payment details info to ConfigAndLog
     $paymentParamsToPrintToLog = $paymentParams;
     unset($paymentParamsToPrintToLog['credit_card_number']);
     CRM_Core_Error::debug_var('Info sent to Authorize.net from the partial payment form', $paymentParamsToPrintToLog);
 
-    if (!empty($result->_errors)) {
-      foreach ($result->_errors as $key => $errorDetails) {
-        if (!empty($errorDetails['message'])) {
-          CRM_Core_Session::setStatus(ts($errorDetails['message']), '', 'no-popup');
-        }
-      }
+    if (!empty($pay['is_error']) && $pay['is_error'] == 1) {
+      CRM_Core_Session::setStatus(ts($pay['error_message']), 'Error Processing Payment', 'no-popup');
     }
-    elseif (!empty($result['amount'])) {
+    else {
       $CCFinancialTrxn = CRM_Paymentui_BAO_Paymentui::createFinancialTrxn($paymentParams);
       $partialPaymentInfo = $this->_participantInfo;
       CRM_Core_Error::debug_var('Participant Info', $this->_participantInfo);
@@ -236,6 +230,7 @@ class CRM_Paymentui_Form_Paymentui extends CRM_Core_Form {
       //Process all the partial payments and update the records
       $paymentProcessedInfo = paymentui_civicrm_process_partial_payments($paymentParams, $this->_participantInfo);
       // example: https://github.com/civicrm/civicrm-core/blob/648631cd94799e87fe2347487d465b1a7256aa57/tests/phpunit/CRM/Core/Config/MailerTest.php#L75
+
       parent::postProcess();
 
       //Define status message

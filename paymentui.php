@@ -84,37 +84,21 @@ function paymentui_civicrm_process_partial_payments($paymentParams, $participant
       $paymentParams['participant_id'] = $pId;
       $paymentParams['contribution_id'] = $pInfo['contribution_id'];
       $paymentParams['is_send_contribution_notification'] = FALSE;
-      try {
-        $trxnRecord = civicrm_api3('Payment', 'create', $paymentParams)['id'];
-      }
-      catch (CiviCRM_API3_Exception $e) {
-        $error = $e->getMessage();
-        CRM_Core_Error::debug_log_message(
-          ts('API Error: %1', array(1 => $error, 'domain' => 'bot.roundlake.paymentui'))
-        );
-      }
+      $trxnRecord = CRM_Paymentui_BAO_Paymentui::apishortcut('Payment', 'create', $paymentParams)['id'];
 
       if ($trxnRecord->id) {
         $participantInfo[$pId]['success'] = 1;
       }
     }
     if (!empty($pInfo['latefees'])) {
-      try {
-        $lateFeeContrib = civicrm_api3('Contribution', 'create', array(
-          'financial_type_id' => "Event Fee",
-          'total_amount' => $pInfo['latefees'],
-          'contact_id' => $pInfo['cid'],
-          'contribution_status_id' => "Completed",
-          'payment_instrument_id' => "Credit Card",
-          'source' => "partial payment form late fee",
-        ));
-      }
-      catch (CiviCRM_API3_Exception $e) {
-        $error = $e->getMessage();
-        CRM_Core_Error::debug_log_message(
-          ts('API Error: %1', array(1 => $error, 'domain' => 'bot.roundlake.paymentui'))
-        );
-      }
+      $lateFeeContrib = CRM_Paymentui_BAO_Paymentui::apishortcut('Contribution', 'create', array(
+        'financial_type_id' => "Event Fee",
+        'total_amount' => $pInfo['latefees'],
+        'contact_id' => $pInfo['cid'],
+        'contribution_status_id' => "Completed",
+        'payment_instrument_id' => "Credit Card",
+        'source' => "partial payment form late fee",
+      ));
     }
     if (!empty($pInfo['partial_payment_pay'])) {
       // Processing Fee 4%
@@ -129,22 +113,14 @@ function paymentui_civicrm_process_partial_payments($paymentParams, $participant
     }
   }
   $loggedInUser = CRM_Core_Session::singleton()->getLoggedInContactID();
-  try {
-    $lateFeeContrib = civicrm_api3('Contribution', 'create', array(
-      'financial_type_id' => "Event Fee",
-      'total_amount' => $processingFeeForPayment,
-      'contact_id' => $loggedInUser,
-      'contribution_status_id' => "Completed",
-      'payment_instrument_id' => "Credit Card",
-      'source' => "partial payment form credit card fee",
-    ));
-  }
-  catch (CiviCRM_API3_Exception $e) {
-    $error = $e->getMessage();
-    CRM_Core_Error::debug_log_message(
-      ts('API Error: %1', array(1 => $error, 'domain' => 'bot.roundlake.paymentui'))
-    );
-  }
+  $lateFeeContrib = CRM_Paymentui_BAO_Paymentui::apishortcut('Contribution', 'create', array(
+    'financial_type_id' => "Event Fee",
+    'total_amount' => $processingFeeForPayment,
+    'contact_id' => $loggedInUser,
+    'contribution_status_id' => "Completed",
+    'payment_instrument_id' => "Credit Card",
+    'source' => "partial payment form credit card fee",
+  ));
   $receiptTable = CRM_Paymentui_BAO_Paymentui::buildEmailTable($participantInfo, $receipt = TRUE, $processingFeeForPayment);
   $body = "<p>Thank you for completing your payment. See details below:</p>
     <div>$receiptTable</div>
