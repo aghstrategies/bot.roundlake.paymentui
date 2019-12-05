@@ -212,11 +212,13 @@ class CRM_Paymentui_Form_Paymentui extends CRM_Core_Form {
     // $payment = Civi\Payment\System::singleton()->getByProcessor($this->_paymentProcessor);
     // $result = $payment->doDirectPayment($paymentParams);
 
-    // TODO this requires a contribution id :/ need to think thru next steps
+    // HACKY PaymentProcessor.pay work around because paymentProcessor pay
+    // requires a contribution id but does not acutually do anything with it at this point.
+    $paymentParams['contribution_id'] = '0';
     $pay = CRM_Paymentui_BAO_Paymentui::apishortcut('PaymentProcessor', 'pay', $paymentParams);
 
     // Log payment details info to ConfigAndLog
-    $paymentParamsToPrintToLog = $paymentParams;
+    $paymentParamsToPrintToLog = $pay['values'][0];
     unset($paymentParamsToPrintToLog['credit_card_number']);
     CRM_Core_Error::debug_var('Info sent to Authorize.net from the partial payment form', $paymentParamsToPrintToLog);
 
@@ -232,7 +234,7 @@ class CRM_Paymentui_Form_Paymentui extends CRM_Core_Form {
       CRM_Core_Error::debug_var('Participant Info', $this->_participantInfo);
 
       //Process all the partial payments and update the records
-      $paymentProcessedInfo = CRM_Paymentui_BAO_Paymentui::process_partial_payments($paymentParams, $this->_participantInfo);
+      $paymentProcessedInfo = CRM_Paymentui_BAO_Paymentui::process_partial_payments($paymentParams, $this->_participantInfo, $pay['values'][0]);
 
       parent::postProcess();
 

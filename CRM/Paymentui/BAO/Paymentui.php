@@ -399,13 +399,14 @@ HERESQL;
   }
 
   /**
-   * Function to process partial payments
+   * Function to create records of relevant payments in CiviCRM
    * @param $paymentParams - Payment Processor parameters
    * @param $participantInfo - participantID as key and contributionID, ContactID, PayLater, Partial Payment Amount
+   * @param $payResponse - response from paymentprocessor.pay call
    * @return participantInfo array with 'Success' flag
    */
-  public static function process_partial_payments($paymentParams, $participantInfo) {
-    //Iterate through participant info
+  public static function process_partial_payments($paymentParams, $participantInfo, $payResponse) {
+    // Iterate through participant info
     $processingFeeForPayment = 0;
     foreach ($participantInfo as $pId => $pInfo) {
       if (!$pInfo['contribution_id'] || !$pId) {
@@ -415,40 +416,45 @@ HERESQL;
 
       if ($pInfo['partial_payment_pay']) {
         // Update contribution and participant status for pending from pay later registrations
-        if ($pInfo['payLater']) {
-          // Using DAO instead of API because API does not allow changing the status from 'Pending from pay later' to 'Partially Paid'
-          $contributionStatuses  = CRM_Contribute_PseudoConstant::contributionStatus(NULL, 'name');
-          $updateContribution    = new CRM_Contribute_DAO_Contribution();
-          $contributionParams    = array(
-            'id'                     => $pInfo['contribution_id'],
-            'contact_id'             => $pInfo['cid'],
-            'contribution_status_id' => array_search('Partially paid', $contributionStatuses),
-          );
 
-          $updateContribution->copyValues($contributionParams);
-          $updateContribution->save();
+        // TODO does this still need to be done special or will the api now handle this? Testing without this code
+        // To test: will a pending paylater participant record get updated to partially paid when a payment is recorded
+        //
+        // if ($pInfo['payLater']) {
+        //   // Using DAO instead of API because API does not allow changing the status from 'Pending from pay later' to 'Partially Paid'
+        //   $contributionStatuses  = CRM_Contribute_PseudoConstant::contributionStatus(NULL, 'name');
+        //   $updateContribution    = new CRM_Contribute_DAO_Contribution();
+        //   $contributionParams    = array(
+        //     'id'                     => $pInfo['contribution_id'],
+        //     'contact_id'             => $pInfo['cid'],
+        //     'contribution_status_id' => array_search('Partially paid', $contributionStatuses),
+        //   );
+        //
+        //   $updateContribution->copyValues($contributionParams);
+        //   $updateContribution->save();
+        //
+        //   //Update participant Status from 'Pending from Pay Later' to 'Partially Paid'
+        //   $pendingPayLater   = CRM_Core_DAO::getFieldValue('CRM_Event_BAO_ParticipantStatusType', 'Pending from pay later', 'id', 'name');
+        //   $partiallyPaid     = CRM_Core_DAO::getFieldValue('CRM_Event_BAO_ParticipantStatusType', 'Partially paid', 'id', 'name');
+        //   $participantStatus = CRM_Core_DAO::getFieldValue('CRM_Event_BAO_Participant', $pId, 'status_id', 'id');
+        //
+        //   if ($participantStatus == $pendingPayLater) {
+        //     CRM_Event_BAO_Participant::updateParticipantStatus($pId, $pendingPayLater, $partiallyPaid, TRUE);
+        //   }
+        // }
 
-          //Update participant Status from 'Pending from Pay Later' to 'Partially Paid'
-          $pendingPayLater   = CRM_Core_DAO::getFieldValue('CRM_Event_BAO_ParticipantStatusType', 'Pending from pay later', 'id', 'name');
-          $partiallyPaid     = CRM_Core_DAO::getFieldValue('CRM_Event_BAO_ParticipantStatusType', 'Partially paid', 'id', 'name');
-          $participantStatus = CRM_Core_DAO::getFieldValue('CRM_Event_BAO_Participant', $pId, 'status_id', 'id');
-
-          if ($participantStatus == $pendingPayLater) {
-            CRM_Event_BAO_Participant::updateParticipantStatus($pId, $pendingPayLater, $partiallyPaid, TRUE);
-          }
-        }
         //Making sure that payment params has the correct amount for partial payment
         $paymentParams['total_amount'] = $pInfo['partial_payment_pay'];
         $paymentParams['payment_instrument_id'] = 1;
 
-        //Add additional financial transactions for each partial payment
+        // Add additional financial transactions for each partial payment
         // $trxnRecord = CRM_Paymentui_BAO_Paymentui::recordAdditionalPayment($pInfo['contribution_id'], $paymentParams, 'owed', $pId);
         $paymentParams['participant_id'] = $pId;
         $paymentParams['contribution_id'] = $pInfo['contribution_id'];
         $paymentParams['is_send_contribution_notification'] = FALSE;
+        $paymentParams['trxn_id'] = $payResponse['trxn_id'];
         $trxnRecord = CRM_Paymentui_BAO_Paymentui::apishortcut('Payment', 'create', $paymentParams)['id'];
-
-        if ($trxnRecord->id) {
+        if ($trxnRecord > 0) {
           $participantInfo[$pId]['success'] = 1;
         }
       }
@@ -472,18 +478,34 @@ HERESQL;
         }
         $processingFee = $processingFee / 100;
         $processingFeeForPayment = $processingFeeForPayment + round($pInfo['partial_payment_pay'] * $processingFee, 2);
+
+        // Create Credit Card Fee Contribution
+        $lateFeeContrib = CRM_Paymentui_BAO_Paymentui::apishortcut('Contribution', 'create', array(
+          'financial_type_id' => "Event Fee",
+          'total_amount' => $processingFeeForPayment,
+          'contact_id' => $loggedInUser,
+          'contribution_status_id' => "Completed",
+          'payment_instrument_id' => "Credit Card",
+          'source' => "partial payment form credit card fee",
+        ));
       }
     }
+
     $loggedInUser = CRM_Core_Session::singleton()->getLoggedInContactID();
-    $lateFeeContrib = CRM_Paymentui_BAO_Paymentui::apishortcut('Contribution', 'create', array(
-      'financial_type_id' => "Event Fee",
-      'total_amount' => $processingFeeForPayment,
-      'contact_id' => $loggedInUser,
-      'contribution_status_id' => "Completed",
-      'payment_instrument_id' => "Credit Card",
-      'source' => "partial payment form credit card fee",
-    ));
-    $receiptTable = CRM_Paymentui_BAO_Paymentui::buildEmailTable($participantInfo, $receipt = TRUE, $processingFeeForPayment);
+
+    self::send_receipt($participantInfo, $processingFeeForPayment, $paymentParams);
+    return $participantInfo;
+  }
+
+  /**
+   * Send Receipt
+   * @param  [type] $participantInfo         [description]
+   * @param  [type] $processingFeeForPayment [description]
+   * @param  [type] $paymentParams           [description]
+   * @return [type]                          [description]
+   */
+  public static function send_receipt($participantInfo, $processingFeeForPayment, $paymentParams) {
+    $receiptTable = CRM_Paymentui_BAO_Paymentui::buildEmailTable($participantInfo, TRUE, $processingFeeForPayment);
     $body = "<p>Thank you for completing your payment. See details below:</p>
       <div>$receiptTable</div>
       <p>Please contact us with any concerns.</p>
@@ -501,7 +523,6 @@ HERESQL;
       'replyTo' => 'reply-to header in the email',
     );
     $receiptEmail = CRM_Utils_Mail::send($mailParams);
-    return $participantInfo;
   }
 
 }
