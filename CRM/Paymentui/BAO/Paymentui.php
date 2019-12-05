@@ -6,6 +6,7 @@
  *
  */
 class CRM_Paymentui_BAO_Paymentui extends CRM_Event_DAO_Participant {
+
   public static function getParticipantInfo($contactID) {
     $relatedContactIDs   = self::getRelatedContacts($contactID);
     $relatedContactIDs[] = $contactID;
@@ -69,8 +70,11 @@ HERESQL;
   }
 
   /**
-   * [getLateFees description]
-   * @param  [type] $eventId [description]
+   * Calculate late fees
+   * @param  int $eventId      id of the event
+   * @param  float $amountPaid Amount paid
+   * @param  float $balance    amount left to be paid
+   * @return array             late fee details
    */
   public static function getLateFees($eventId, $amountPaid, $balance) {
     $return = array(
@@ -126,7 +130,7 @@ HERESQL;
             'diff' => $dueDate - $currentDate,
           );
 
-          if ($amountPaid >= $amountOwed)  {
+          if ($amountPaid >= $amountOwed) {
             $dates['status'] = 'paid';
           }
           elseif ($dueDate >= $currentDate) {
