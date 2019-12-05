@@ -27,27 +27,13 @@ class CRM_Paymentui_BAO_Paymentui extends CRM_Event_DAO_Participant {
     return $result;
   }
 
-  /**
-   * Get ids of participant statuses we care about
-   * @return string of participant ids separated by commas
-   */
-  public static function getParticipantStatuses() {
-    $statusesWeCareAbout = [];
-    $pstatuses = self::apishortcut('ParticipantStatusType', 'get', [
-      'name' => ['IN' => ["Pending from pay later", "Partially paid"]],
-    ]);
-    if (!empty($pstatuses['values'])) {
-      $statusesWeCareAbout = array_keys($pstatuses['values']);
-    }
-    $statusesWeCareAbout = implode(',', $statusesWeCareAbout);
-    return $statusesWeCareAbout;
-  }
-
   public static function getParticipantInfo($contactID) {
     $relatedContactIDs   = self::getRelatedContacts($contactID);
     $relatedContactIDs[] = $contactID;
     $relContactIDs       = implode(',', $relatedContactIDs);
-    $participantStatuses = self::getParticipantStatuses();
+    $pendingPayLater     = CRM_Core_DAO::getFieldValue('CRM_Event_BAO_ParticipantStatusType', 'Pending from pay later', 'id', 'name');
+    $partiallyPaid       = CRM_Core_DAO::getFieldValue('CRM_Event_BAO_ParticipantStatusType', 'Partially paid', 'id', 'name');
+
     //Get participant info for the primary and related contacts
     $sql = <<<HERESQL
 SELECT p.id, p.contact_id, e.title, c.display_name, p.event_id, pp.contribution_id
@@ -59,7 +45,7 @@ FROM civicrm_participant p
   INNER JOIN civicrm_participant_payment pp
     ON ( p.id = pp.participant_id )
 WHERE p.contact_id IN ($relContactIDs)
-  AND p.status_id IN ($participantStatuses)
+  AND p.status_id IN ($pendingPayLater, $partiallyPaid)
   AND p.is_test = 0
 HERESQL;
     $dao = CRM_Core_DAO::executeQuery($sql);
