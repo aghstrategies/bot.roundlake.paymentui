@@ -214,53 +214,58 @@ HERESQL;
     }
   }
 
+  // TODO I THink this can be deleted
   /**
    * Creates a financial trxn record for the CC transaction of the total amount
    */
-  public function createFinancialTrxn($payment) {
-    //Set Payment processor to Auth CC
-    //To be changed for switching to live processor
-    $payment_processor_id = CRM_Core_DAO::getFieldValue('CRM_Financial_DAO_PaymentProcessor', 'Credit Card', 'id', 'name');
-    $fromAccountID        = CRM_Core_DAO::getFieldValue('CRM_Financial_DAO_FinancialAccount', 'Accounts Receivable', 'id', 'name');
-    $CCAccountID          = CRM_Core_DAO::getFieldValue('CRM_Financial_DAO_FinancialAccount', 'Payment Processor Account', 'id', 'name');
-    $paymentMethods       = CRM_Contribute_PseudoConstant::paymentInstrument();
-    $CC_id                = array_search('Credit Card', $paymentMethods);
-    $params = array(
-      'to_financial_account_id'   => $CCAccountID,
-      'from_financial_account_id' => $fromAccountID,
-      'trxn_date'                 => date('Ymd'),
-      'total_amount'              => $payment['amount'],
-      'fee_amount'                => '',
-      'net_amount'                => '',
-      'currency'                  => $payment['currencyID'],
-      'status_id'                 => 1,
-      'trxn_id'                   => $payment['trxn_id'],
-      'payment_processor'         => $payment_processor_id,
-      'payment_instrument_id'     => $CC_id,
-    );
-    require_once 'CRM/Core/BAO/FinancialTrxn.php';
+  // public function createFinancialTrxn($payment) {
+  //   //Set Payment processor to Auth CC
+  //   //To be changed for switching to live processor
+  //   $payment_processor_id = CRM_Core_DAO::getFieldValue('CRM_Financial_DAO_PaymentProcessor', 'Credit Card', 'id', 'name');
+  //   $fromAccountID        = CRM_Core_DAO::getFieldValue('CRM_Financial_DAO_FinancialAccount', 'Accounts Receivable', 'id', 'name');
+  //   $CCAccountID          = CRM_Core_DAO::getFieldValue('CRM_Financial_DAO_FinancialAccount', 'Payment Processor Account', 'id', 'name');
+  //   $paymentMethods       = CRM_Contribute_PseudoConstant::paymentInstrument();
+  //   $CC_id                = array_search('Credit Card', $paymentMethods);
+  //   $params = array(
+  //     'to_financial_account_id'   => $CCAccountID,
+  //     'from_financial_account_id' => $fromAccountID,
+  //     'trxn_date'                 => date('Ymd'),
+  //     'total_amount'              => $payment['amount'],
+  //     'fee_amount'                => '',
+  //     'net_amount'                => '',
+  //     'currency'                  => $payment['currencyID'],
+  //     'status_id'                 => 1,
+  //     'trxn_id'                   => $payment['trxn_id'],
+  //     'payment_processor'         => $payment_processor_id,
+  //     'payment_instrument_id'     => $CC_id,
+  //   );
+  //   require_once 'CRM/Core/BAO/FinancialTrxn.php';
+  //
+  //   $trxn = new CRM_Financial_DAO_FinancialTrxn();
+  //   $trxn->copyValues($params);
+  //   $fids = array();
+  //   if (!CRM_Utils_Rule::currencyCode($trxn->currency)) {
+  //     $config = CRM_Core_Config::singleton();
+  //     $trxn->currency = $config->defaultCurrency;
+  //   }
+  //
+  //   $trxn->save();
+  //   $entityFinancialTrxnParams = array(
+  //     'entity_table'      => "civicrm_financial_trxn",
+  //     'entity_id'         => $trxn->id,
+  //     'financial_trxn_id' => $trxn->id,
+  //     'amount'            => $params['total_amount'],
+  //     'currency'          => $trxn->currency,
+  //   );
+  //   $entityTrxn = new CRM_Financial_DAO_EntityFinancialTrxn();
+  //   $entityTrxn->copyValues($entityFinancialTrxnParams);
+  //   $entityTrxn->save();
+  // }
 
-    $trxn = new CRM_Financial_DAO_FinancialTrxn();
-    $trxn->copyValues($params);
-    $fids = array();
-    if (!CRM_Utils_Rule::currencyCode($trxn->currency)) {
-      $config = CRM_Core_Config::singleton();
-      $trxn->currency = $config->defaultCurrency;
-    }
-
-    $trxn->save();
-    $entityFinancialTrxnParams = array(
-      'entity_table'      => "civicrm_financial_trxn",
-      'entity_id'         => $trxn->id,
-      'financial_trxn_id' => $trxn->id,
-      'amount'            => $params['total_amount'],
-      'currency'          => $trxn->currency,
-    );
-    $entityTrxn = new CRM_Financial_DAO_EntityFinancialTrxn();
-    $entityTrxn->copyValues($entityFinancialTrxnParams);
-    $entityTrxn->save();
-  }
-
+  /**
+   * Get fees from settings
+   * @return array fees as defined on the settings page
+   */
   public static function getFeesFromSettings() {
     $fees = array();
     $existingSetting = self::apishortcut('Setting', 'get', array(
@@ -276,6 +281,13 @@ HERESQL;
     return $fees;
   }
 
+  /**
+   * Build Email html
+   * @param  array $participantInfo  Information about the participant
+   * @param  boolean $receipt         is this a reciept or not
+   * @param  integer $processingFee   processing fee
+   * @return string                   Email text
+   */
   public static function buildEmailTable($participantInfo, $receipt = FALSE, $processingFee = 0) {
     $table = '<table class="partialPayment" border="1" cellpadding="4" cellspacing="1" style="border-collapse: collapse; text-align: left">
      <thead><tr>
@@ -341,6 +353,11 @@ HERESQL;
     return $table;
   }
 
+  /**
+   * Simple table token
+   * @param  array $participantInfo array of information about the participant
+   * @return string                 simple table token text
+   */
   public static function buildSimpleEmailTable($participantInfo) {
     $table = '<table class="partialPayment" cellspacing="5" cellpadding="5" style="border-collapse: collapse; text-align: left">
      <thead align="left"><tr>
