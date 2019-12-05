@@ -204,14 +204,15 @@ class CRM_Paymentui_Form_Paymentui extends CRM_Core_Form {
     $this->_params['payment_action'] = 'Sale';
     $this->_params['invoiceID']      = md5(uniqid(rand(), TRUE));
 
-    // TODO verify this is an id
-    $this->_params['payment_processor_id'] = $this->_paymentProcessor;
+    $this->_params['payment_processor_id'] = $this->_paymentProcessor['id'];
 
     $paymentParams = $this->_params;
     CRM_Core_Payment_Form::mapParams($this->_bltID, $this->_params, $paymentParams, TRUE);
     // $payment = CRM_Core_Payment::singleton($this->_mode, $this->_paymentProcessor, $this);
     // $payment = Civi\Payment\System::singleton()->getByProcessor($this->_paymentProcessor);
     // $result = $payment->doDirectPayment($paymentParams);
+
+    // TODO this requires a contribution id :/ need to think thru next steps
     $pay = CRM_Paymentui_BAO_Paymentui::apishortcut('PaymentProcessor', 'pay', $paymentParams);
 
     // Log payment details info to ConfigAndLog
@@ -225,7 +226,7 @@ class CRM_Paymentui_Form_Paymentui extends CRM_Core_Form {
     else {
       // TODO I THINK this now happens when one runs payment.create test and then delete
       // $CCFinancialTrxn = CRM_Paymentui_BAO_Paymentui::createFinancialTrxn($paymentParams);
-      $partialPaymentInfo = $this->_participantInfo;
+      // $partialPaymentInfo = $this->_participantInfo;
 
       // Log participant information just in case
       CRM_Core_Error::debug_var('Participant Info', $this->_participantInfo);
