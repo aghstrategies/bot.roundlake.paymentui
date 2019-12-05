@@ -223,13 +223,15 @@ class CRM_Paymentui_Form_Paymentui extends CRM_Core_Form {
       CRM_Core_Session::setStatus(ts($pay['error_message']), 'Error Processing Payment', 'no-popup');
     }
     else {
-      $CCFinancialTrxn = CRM_Paymentui_BAO_Paymentui::createFinancialTrxn($paymentParams);
+      // TODO I THINK this now happens when one runs payment.create test and then delete
+      // $CCFinancialTrxn = CRM_Paymentui_BAO_Paymentui::createFinancialTrxn($paymentParams);
       $partialPaymentInfo = $this->_participantInfo;
+
+      // Log participant information just in case
       CRM_Core_Error::debug_var('Participant Info', $this->_participantInfo);
 
       //Process all the partial payments and update the records
-      $paymentProcessedInfo = paymentui_civicrm_process_partial_payments($paymentParams, $this->_participantInfo);
-      // example: https://github.com/civicrm/civicrm-core/blob/648631cd94799e87fe2347487d465b1a7256aa57/tests/phpunit/CRM/Core/Config/MailerTest.php#L75
+      $paymentProcessedInfo = CRM_Paymentui_BAO_Paymentui::process_partial_payments($paymentParams, $this->_participantInfo);
 
       parent::postProcess();
 
