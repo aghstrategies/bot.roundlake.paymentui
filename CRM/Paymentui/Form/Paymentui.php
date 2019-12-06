@@ -208,9 +208,6 @@ class CRM_Paymentui_Form_Paymentui extends CRM_Core_Form {
 
     $paymentParams = $this->_params;
     CRM_Core_Payment_Form::mapParams($this->_bltID, $this->_params, $paymentParams, TRUE);
-    // $payment = CRM_Core_Payment::singleton($this->_mode, $this->_paymentProcessor, $this);
-    // $payment = Civi\Payment\System::singleton()->getByProcessor($this->_paymentProcessor);
-    // $result = $payment->doDirectPayment($paymentParams);
 
     // HACKY PaymentProcessor.pay work around because paymentProcessor pay
     // requires a contribution id but does not acutually do anything with it at this point.
@@ -226,10 +223,6 @@ class CRM_Paymentui_Form_Paymentui extends CRM_Core_Form {
       CRM_Core_Session::setStatus(ts($pay['error_message']), 'Error Processing Payment', 'no-popup');
     }
     else {
-      // TODO I THINK this now happens when one runs payment.create test and then delete
-      // $CCFinancialTrxn = CRM_Paymentui_BAO_Paymentui::createFinancialTrxn($paymentParams);
-      // $partialPaymentInfo = $this->_participantInfo;
-
       // Log participant information just in case
       CRM_Core_Error::debug_var('Participant Info', $this->_participantInfo);
 

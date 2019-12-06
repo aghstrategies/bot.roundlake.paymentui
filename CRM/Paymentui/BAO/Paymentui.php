@@ -214,54 +214,6 @@ HERESQL;
     }
   }
 
-  // TODO I THink this can be deleted
-  /**
-   * Creates a financial trxn record for the CC transaction of the total amount
-   */
-  // public function createFinancialTrxn($payment) {
-  //   //Set Payment processor to Auth CC
-  //   //To be changed for switching to live processor
-  //   $payment_processor_id = CRM_Core_DAO::getFieldValue('CRM_Financial_DAO_PaymentProcessor', 'Credit Card', 'id', 'name');
-  //   $fromAccountID        = CRM_Core_DAO::getFieldValue('CRM_Financial_DAO_FinancialAccount', 'Accounts Receivable', 'id', 'name');
-  //   $CCAccountID          = CRM_Core_DAO::getFieldValue('CRM_Financial_DAO_FinancialAccount', 'Payment Processor Account', 'id', 'name');
-  //   $paymentMethods       = CRM_Contribute_PseudoConstant::paymentInstrument();
-  //   $CC_id                = array_search('Credit Card', $paymentMethods);
-  //   $params = array(
-  //     'to_financial_account_id'   => $CCAccountID,
-  //     'from_financial_account_id' => $fromAccountID,
-  //     'trxn_date'                 => date('Ymd'),
-  //     'total_amount'              => $payment['amount'],
-  //     'fee_amount'                => '',
-  //     'net_amount'                => '',
-  //     'currency'                  => $payment['currencyID'],
-  //     'status_id'                 => 1,
-  //     'trxn_id'                   => $payment['trxn_id'],
-  //     'payment_processor'         => $payment_processor_id,
-  //     'payment_instrument_id'     => $CC_id,
-  //   );
-  //   require_once 'CRM/Core/BAO/FinancialTrxn.php';
-  //
-  //   $trxn = new CRM_Financial_DAO_FinancialTrxn();
-  //   $trxn->copyValues($params);
-  //   $fids = array();
-  //   if (!CRM_Utils_Rule::currencyCode($trxn->currency)) {
-  //     $config = CRM_Core_Config::singleton();
-  //     $trxn->currency = $config->defaultCurrency;
-  //   }
-  //
-  //   $trxn->save();
-  //   $entityFinancialTrxnParams = array(
-  //     'entity_table'      => "civicrm_financial_trxn",
-  //     'entity_id'         => $trxn->id,
-  //     'financial_trxn_id' => $trxn->id,
-  //     'amount'            => $params['total_amount'],
-  //     'currency'          => $trxn->currency,
-  //   );
-  //   $entityTrxn = new CRM_Financial_DAO_EntityFinancialTrxn();
-  //   $entityTrxn->copyValues($entityFinancialTrxnParams);
-  //   $entityTrxn->save();
-  // }
-
   /**
    * Get fees from settings
    * @return array fees as defined on the settings page
@@ -408,6 +360,8 @@ HERESQL;
   public static function process_partial_payments($paymentParams, $participantInfo, $payResponse) {
     // Iterate through participant info
     $processingFeeForPayment = 0;
+    $loggedInUser = CRM_Core_Session::singleton()->getLoggedInContactID();
+
     foreach ($participantInfo as $pId => $pInfo) {
       if (!$pInfo['contribution_id'] || !$pId) {
         $participantInfo[$pId]['success'] = 0;
@@ -415,33 +369,19 @@ HERESQL;
       }
 
       if ($pInfo['partial_payment_pay']) {
-        // Update contribution and participant status for pending from pay later registrations
+        // Update participant status for pending from pay later registrations
+        if ($pInfo['payLater']) {
+          //Update participant Status from 'Pending from Pay Later' to 'Partially Paid'
+          $pendingPayLater   = CRM_Core_DAO::getFieldValue('CRM_Event_BAO_ParticipantStatusType', 'Pending from pay later', 'id', 'name');
+          $participantStatus = CRM_Core_DAO::getFieldValue('CRM_Event_BAO_Participant', $pId, 'status_id', 'id');
 
-        // TODO does this still need to be done special or will the api now handle this? Testing without this code
-        // To test: will a pending paylater participant record get updated to partially paid when a payment is recorded
-        //
-        // if ($pInfo['payLater']) {
-        //   // Using DAO instead of API because API does not allow changing the status from 'Pending from pay later' to 'Partially Paid'
-        //   $contributionStatuses  = CRM_Contribute_PseudoConstant::contributionStatus(NULL, 'name');
-        //   $updateContribution    = new CRM_Contribute_DAO_Contribution();
-        //   $contributionParams    = array(
-        //     'id'                     => $pInfo['contribution_id'],
-        //     'contact_id'             => $pInfo['cid'],
-        //     'contribution_status_id' => array_search('Partially paid', $contributionStatuses),
-        //   );
-        //
-        //   $updateContribution->copyValues($contributionParams);
-        //   $updateContribution->save();
-        //
-        //   //Update participant Status from 'Pending from Pay Later' to 'Partially Paid'
-        //   $pendingPayLater   = CRM_Core_DAO::getFieldValue('CRM_Event_BAO_ParticipantStatusType', 'Pending from pay later', 'id', 'name');
-        //   $partiallyPaid     = CRM_Core_DAO::getFieldValue('CRM_Event_BAO_ParticipantStatusType', 'Partially paid', 'id', 'name');
-        //   $participantStatus = CRM_Core_DAO::getFieldValue('CRM_Event_BAO_Participant', $pId, 'status_id', 'id');
-        //
-        //   if ($participantStatus == $pendingPayLater) {
-        //     CRM_Event_BAO_Participant::updateParticipantStatus($pId, $pendingPayLater, $partiallyPaid, TRUE);
-        //   }
-        // }
+          if ($participantStatus == $pendingPayLater) {
+            $trxnRecord = CRM_Paymentui_BAO_Paymentui::apishortcut('Participant', 'create', [
+              'id' => $pId,
+              'status_id' => "Partially paid",
+            ]);
+          }
+        }
 
         //Making sure that payment params has the correct amount for partial payment
         $paymentParams['total_amount'] = $pInfo['partial_payment_pay'];
@@ -453,8 +393,8 @@ HERESQL;
         $paymentParams['contribution_id'] = $pInfo['contribution_id'];
         $paymentParams['is_send_contribution_notification'] = FALSE;
         $paymentParams['trxn_id'] = $payResponse['trxn_id'];
-        $trxnRecord = CRM_Paymentui_BAO_Paymentui::apishortcut('Payment', 'create', $paymentParams)['id'];
-        if ($trxnRecord > 0) {
+        $trxnRecord = CRM_Paymentui_BAO_Paymentui::apishortcut('Payment', 'create', $paymentParams);
+        if (!empty($trxnRecord['id'])) {
           $participantInfo[$pId]['success'] = 1;
         }
       }
@@ -466,33 +406,23 @@ HERESQL;
           'contribution_status_id' => "Completed",
           'payment_instrument_id' => "Credit Card",
           'source' => "partial payment form late fee",
+          'trxn_id' => $payResponse['trxn_id'],
         ));
       }
-      if (!empty($pInfo['partial_payment_pay'])) {
-        // Processing Fee 4%
-        $processingFee = 4;
-        // IF setting exists pull from the settings form
-        $fees = CRM_Paymentui_BAO_Paymentui::getFeesFromSettings();
-        if (!empty($fees['processing_fee'])) {
-          $processingFee = $fees['processing_fee'];
-        }
-        $processingFee = $processingFee / 100;
-        $processingFeeForPayment = $processingFeeForPayment + round($pInfo['partial_payment_pay'] * $processingFee, 2);
 
+      if (!empty($pInfo['processingfees'])) {
         // Create Credit Card Fee Contribution
-        $lateFeeContrib = CRM_Paymentui_BAO_Paymentui::apishortcut('Contribution', 'create', array(
+        $ProcessingFeeContrib = CRM_Paymentui_BAO_Paymentui::apishortcut('Contribution', 'create', array(
           'financial_type_id' => "Event Fee",
-          'total_amount' => $processingFeeForPayment,
+          'total_amount' => $pInfo['processingfees'],
           'contact_id' => $loggedInUser,
           'contribution_status_id' => "Completed",
           'payment_instrument_id' => "Credit Card",
           'source' => "partial payment form credit card fee",
+          'trxn_id' => $payResponse['trxn_id'],
         ));
       }
     }
-
-    $loggedInUser = CRM_Core_Session::singleton()->getLoggedInContactID();
-
     self::send_receipt($participantInfo, $processingFeeForPayment, $paymentParams);
     return $participantInfo;
   }
