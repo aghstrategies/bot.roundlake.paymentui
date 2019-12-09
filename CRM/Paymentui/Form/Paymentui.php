@@ -84,6 +84,12 @@ class CRM_Paymentui_Form_Paymentui extends CRM_Core_Form {
       foreach ($this->_participantInfo as $pid => $pInfo) {
         $latefees = $latefees + $pInfo['latefees'];
         $element =& $this->add('text', "payment[$pid]", NULL, array(), FALSE);
+        if ($pInfo['latefees'] > 0) {
+          $element =& $this->add('text', "latefee[$pid]", NULL, ['disabled' => TRUE], FALSE);
+          $defaults["latefee[$pid]"] = $pInfo['latefees'];
+        }
+        $element =& $this->add('text', "pfee[$pid]", NULL, ['disabled' => TRUE], FALSE);
+        $element =& $this->add('text', "subtotal[$pid]", NULL, ['disabled' => TRUE], FALSE);
         $defaults["payment[$pid]"] = $pInfo['totalDue'];
       }
     }
