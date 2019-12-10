@@ -455,4 +455,69 @@ HERESQL;
     $receiptEmail = CRM_Utils_Mail::send($mailParams);
   }
 
+  /**
+   * [update_line_items_for_fees description]
+   * @param  [type] $pid     [description]
+   * @param  [type] $pfee    [description]
+   * @param  [type] $latefee [description]
+   * @return [type]          [description]
+   */
+  public static function update_line_items_for_fees($pid, $pfee, $latefee) {
+    // get the contribution ID
+    $participantPayment = self::apishortcut('ParticipantPayment', 'getsingle', [
+      'participant_id' => $pid,
+    ]);
+
+    if (!empty($participantPayment['contribution_id'])) {
+      $contribId = $participantPayment['contribution_id'];
+      // get the Date
+      $paymentmade = date('Y-m-d H:i:s');
+      // Create new line items for each fee
+      if ($latefee > 0) {
+        $lateFeeLineItem = self::apishortcut('LineItem', 'create', [
+          'entity_table' => "civicrm_participant",
+          'qty' => 1,
+          'unit_price' => $latefee,
+          'line_total' => $latefee,
+          'non_deductible_amount' => 0,
+          'tax_amount' => 0,
+          'price_field_id' => "",
+          'contribution_id' => $contribId,
+          'label' => "Late Fee - $paymentmade",
+          'entity_id' => $pid,
+        ]);
+      }
+
+      if ($pfee > 0) {
+        $pFeeLineItem = self::apishortcut('LineItem', 'create', [
+          'entity_table' => "civicrm_participant",
+          'qty' => 1,
+          'unit_price' => $pfee,
+          'line_total' => $pfee,
+          'contribution_id' => $contribId,
+          'label' => "Processing Fee - {$paymentmade}",
+          'entity_id' => $pid,
+          'non_deductible_amount' => 0,
+          'tax_amount' => 0,
+          'price_field_id' => "",
+        ]);
+      }
+
+      // Update the contribution total
+      // $allLineItems = self::apishortcut('LineItem', 'get', [
+      //   'contribution_id' => $contribId,
+      // ]);
+      // if (!empty($allLineItems['values'])) {
+      //   $total = 0;
+      //   foreach ($allLineItems['values'] as $key => $lineItemDetails) {
+      //     $total = $total + $lineItemDetails['line_total'];
+      //   }
+      //   $allLineItems = self::apishortcut('Contribution', 'create', [
+      //     'id' => $contribId,
+      //     'total_amount' => $total,
+      //   ]);
+      // }
+    }
+  }
+
 }

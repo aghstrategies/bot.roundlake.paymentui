@@ -141,16 +141,16 @@ class CRM_Paymentui_Form_Paymentui extends CRM_Core_Form {
     }
     //Validate credit card fields
     $required = array(
-      'credit_card_type'   => 'Credit Card Type',
-      'credit_card_number' => 'Credit Card Number',
-      'cvv2'               => 'CVV',
-      'billing_first_name' => 'Billing First Name',
-      'billing_last_name' => 'Billing Last Name',
-      'billing_street_address-5'  => 'Billing Street Address',
-      'billing_city-5' => 'City',
+      'credit_card_type'            => 'Credit Card Type',
+      'credit_card_number'          => 'Credit Card Number',
+      'cvv2'                        => 'CVV',
+      'billing_first_name'          => 'Billing First Name',
+      'billing_last_name'           => 'Billing Last Name',
+      'billing_street_address-5'    => 'Billing Street Address',
+      'billing_city-5'              => 'City',
       'billing_state_province_id-5' => 'State Province',
-      'billing_postal_code-5' => 'Postal Code',
-      'billing_country_id-5' => 'Country',
+      'billing_postal_code-5'       => 'Postal Code',
+      'billing_country_id-5'        => 'Country',
     );
 
     foreach ($required as $name => $fld) {
@@ -170,11 +170,10 @@ class CRM_Paymentui_Form_Paymentui extends CRM_Core_Form {
    * @return void
    */
   public function postProcess() {
-    $values = $this->exportValues();
+    // $values = $this->exportValues();
     $this->_params = $this->controller->exportValues($this->_name);
     $totalAmount = 0;
     $config = CRM_Core_Config::singleton();
-    $lateFees = 0;
     $fees = CRM_Paymentui_BAO_Paymentui::getFeesFromSettings();
     $processingFee = 4;
     $totalProcessingFee = 0;
@@ -183,8 +182,27 @@ class CRM_Paymentui_Form_Paymentui extends CRM_Core_Form {
     }
     $processingFee = $processingFee / 100;
 
-    //Calculate total amount paid and individual amount for each contribution
     foreach ($this->_params['payment'] as $pid => $pVal) {
+
+      // Calculate total amount per registrant
+      $partTotal = 0;
+      $pfee = 0;
+      $latefee = 0;
+
+      // Add processing fee  (recalculate here because we do not trust js)
+      $pfee = round($pVal * $processingFee, 2);
+      $partTotal = $pVal + $pfee;
+
+      // If there is a late fee add it
+      if (!empty($this->_participantInfo[$pid]['latefees'])) {
+        $latefee = $this->_participantInfo[$pid]['latefees'];
+        $partTotal = $partTotal + $latefee;
+      }
+
+      // TODO update contribution to include line items for fees
+      CRM_Paymentui_BAO_Paymentui::update_line_items_for_fees($pid, $pfee, $latefee);
+
+      // TODO do we need this still?
       // add together partial pay amounts
       $totalAmount += $pVal;
       //save partial pay amount to particioant info array
@@ -196,11 +214,10 @@ class CRM_Paymentui_Form_Paymentui extends CRM_Core_Form {
       $totalProcessingFee += $this->_participantInfo[$pid]['processingfees'];
     }
     $totalAmount = $totalAmount + $lateFees + $totalProcessingFee;
+
     //Building params for CC processing
     $this->_params["state_province-{$this->_bltID}"] = $this->_params["billing_state_province-{$this->_bltID}"] = CRM_Core_PseudoConstant::stateProvinceAbbreviation($this->_params["billing_state_province_id-{$this->_bltID}"]);
-
     $this->_params["country-{$this->_bltID}"] = $this->_params["billing_country-{$this->_bltID}"] = CRM_Core_PseudoConstant::countryIsoCode($this->_params["billing_country_id-{$this->_bltID}"]);
-
     $this->_params['year']           = CRM_Core_Payment_Form::getCreditCardExpirationYear($this->_params);
     $this->_params['month']          = CRM_Core_Payment_Form::getCreditCardExpirationMonth($this->_params);
     $this->_params['ip_address']     = CRM_Utils_System::ipAddress();
