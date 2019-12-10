@@ -357,73 +357,38 @@ HERESQL;
    * @param $payResponse - response from paymentprocessor.pay call
    * @return participantInfo array with 'Success' flag
    */
-  public static function process_partial_payments($paymentParams, $participantInfo, $payResponse) {
-    // Iterate through participant info
-    $processingFeeForPayment = 0;
-    $loggedInUser = CRM_Core_Session::singleton()->getLoggedInContactID();
+  public static function process_partial_payments($paymentParams, &$participantInfo, $payResponse, $pid) {
+    // if (!$participantInfo[$pid]['contribution_id'] || !$pId) {
+    //   $participantInfo[$pId]['success'] = 0;
+    // }
 
-    foreach ($participantInfo as $pId => $pInfo) {
-      if (!$pInfo['contribution_id'] || !$pId) {
-        $participantInfo[$pId]['success'] = 0;
-        continue;
-      }
+    // Update participant status for pending from pay later registrations
+    //Update participant Status from 'Pending from Pay Later' to 'Partially Paid'
+    $pendingPayLater   = CRM_Core_DAO::getFieldValue('CRM_Event_BAO_ParticipantStatusType', 'Pending from pay later', 'id', 'name');
+    $participantStatus = CRM_Core_DAO::getFieldValue('CRM_Event_BAO_Participant', $pid, 'status_id', 'id');
 
-      if ($pInfo['partial_payment_pay']) {
-        // Update participant status for pending from pay later registrations
-        if ($pInfo['payLater']) {
-          //Update participant Status from 'Pending from Pay Later' to 'Partially Paid'
-          $pendingPayLater   = CRM_Core_DAO::getFieldValue('CRM_Event_BAO_ParticipantStatusType', 'Pending from pay later', 'id', 'name');
-          $participantStatus = CRM_Core_DAO::getFieldValue('CRM_Event_BAO_Participant', $pId, 'status_id', 'id');
-
-          if ($participantStatus == $pendingPayLater) {
-            $trxnRecord = CRM_Paymentui_BAO_Paymentui::apishortcut('Participant', 'create', [
-              'id' => $pId,
-              'status_id' => "Partially paid",
-            ]);
-          }
-        }
-
-        //Making sure that payment params has the correct amount for partial payment
-        $paymentParams['total_amount'] = $pInfo['partial_payment_pay'];
-        $paymentParams['payment_instrument_id'] = 1;
-
-        // Add additional financial transactions for each partial payment
-        // $trxnRecord = CRM_Paymentui_BAO_Paymentui::recordAdditionalPayment($pInfo['contribution_id'], $paymentParams, 'owed', $pId);
-        $paymentParams['participant_id'] = $pId;
-        $paymentParams['contribution_id'] = $pInfo['contribution_id'];
-        $paymentParams['is_send_contribution_notification'] = FALSE;
-        $paymentParams['trxn_id'] = $payResponse['trxn_id'];
-        $trxnRecord = CRM_Paymentui_BAO_Paymentui::apishortcut('Payment', 'create', $paymentParams);
-        if (!empty($trxnRecord['id'])) {
-          $participantInfo[$pId]['success'] = 1;
-        }
-      }
-      if (!empty($pInfo['latefees'])) {
-        $lateFeeContrib = CRM_Paymentui_BAO_Paymentui::apishortcut('Contribution', 'create', array(
-          'financial_type_id' => "Event Fee",
-          'total_amount' => $pInfo['latefees'],
-          'contact_id' => $pInfo['cid'],
-          'contribution_status_id' => "Completed",
-          'payment_instrument_id' => "Credit Card",
-          'source' => "partial payment form late fee",
-          'trxn_id' => $payResponse['trxn_id'],
-        ));
-      }
-
-      if (!empty($pInfo['processingfees'])) {
-        // Create Credit Card Fee Contribution
-        $ProcessingFeeContrib = CRM_Paymentui_BAO_Paymentui::apishortcut('Contribution', 'create', array(
-          'financial_type_id' => "Event Fee",
-          'total_amount' => $pInfo['processingfees'],
-          'contact_id' => $loggedInUser,
-          'contribution_status_id' => "Completed",
-          'payment_instrument_id' => "Credit Card",
-          'source' => "partial payment form credit card fee",
-          'trxn_id' => $payResponse['trxn_id'],
-        ));
-      }
+    if ($participantStatus == $pendingPayLater) {
+      $trxnRecord = CRM_Paymentui_BAO_Paymentui::apishortcut('Participant', 'create', [
+        'id' => $pid,
+        'status_id' => "Partially paid",
+      ]);
     }
-    self::send_receipt($participantInfo, $processingFeeForPayment, $paymentParams);
+
+    //Making sure that payment params has the correct amount for partial payment
+    $paymentParams['total_amount'] = $paymentParams['amount'];
+    $paymentParams['payment_instrument_id'] = 1;
+
+    // Add additional financial transactions for each partial payment
+    // $trxnRecord = CRM_Paymentui_BAO_Paymentui::recordAdditionalPayment($participantInfo[$pid]['contribution_id'], $paymentParams, 'owed', $pId);
+    $paymentParams['participant_id'] = $pid;
+    $paymentParams['contribution_id'] = $participantInfo[$pid]['contribution_id'];
+    $paymentParams['is_send_contribution_notification'] = FALSE;
+    $paymentParams['trxn_id'] = $payResponse['trxn_id'];
+    $trxnRecord = CRM_Paymentui_BAO_Paymentui::apishortcut('Payment', 'create', $paymentParams);
+    if (!empty($trxnRecord['id'])) {
+      $participantInfo[$pId]['success'] = 1;
+    }
+
     return $participantInfo;
   }
 
@@ -457,67 +422,62 @@ HERESQL;
 
   /**
    * [update_line_items_for_fees description]
-   * @param  [type] $pid     [description]
-   * @param  [type] $pfee    [description]
-   * @param  [type] $latefee [description]
-   * @return [type]          [description]
+   * @param  [type] $pid       [description]
+   * @param  [type] $pfee      [description]
+   * @param  [type] $latefee   [description]
+   * @param  [type] $contribId [description]
+   * @return [type]            [description]
    */
-  public static function update_line_items_for_fees($pid, $pfee, $latefee) {
-    // get the contribution ID
-    $participantPayment = self::apishortcut('ParticipantPayment', 'getsingle', [
-      'participant_id' => $pid,
-    ]);
+  public static function update_line_items_for_fees($pid, $pfee, $latefee, $contribId) {
 
-    if (!empty($participantPayment['contribution_id'])) {
-      $contribId = $participantPayment['contribution_id'];
-      // get the Date
-      $paymentmade = date('Y-m-d H:i:s');
-      // Create new line items for each fee
-      if ($latefee > 0) {
-        $lateFeeLineItem = self::apishortcut('LineItem', 'create', [
-          'entity_table' => "civicrm_participant",
-          'qty' => 1,
-          'unit_price' => $latefee,
-          'line_total' => $latefee,
-          'non_deductible_amount' => 0,
-          'tax_amount' => 0,
-          'price_field_id' => "",
-          'contribution_id' => $contribId,
-          'label' => "Late Fee - $paymentmade",
-          'entity_id' => $pid,
-        ]);
-      }
-
-      if ($pfee > 0) {
-        $pFeeLineItem = self::apishortcut('LineItem', 'create', [
-          'entity_table' => "civicrm_participant",
-          'qty' => 1,
-          'unit_price' => $pfee,
-          'line_total' => $pfee,
-          'contribution_id' => $contribId,
-          'label' => "Processing Fee - {$paymentmade}",
-          'entity_id' => $pid,
-          'non_deductible_amount' => 0,
-          'tax_amount' => 0,
-          'price_field_id' => "",
-        ]);
-      }
-
-      // Update the contribution total
-      // $allLineItems = self::apishortcut('LineItem', 'get', [
-      //   'contribution_id' => $contribId,
-      // ]);
-      // if (!empty($allLineItems['values'])) {
-      //   $total = 0;
-      //   foreach ($allLineItems['values'] as $key => $lineItemDetails) {
-      //     $total = $total + $lineItemDetails['line_total'];
-      //   }
-      //   $allLineItems = self::apishortcut('Contribution', 'create', [
-      //     'id' => $contribId,
-      //     'total_amount' => $total,
-      //   ]);
-      // }
+    // get the Date
+    $paymentmade = date('Y-m-d H:i:s');
+    // Create new line items for each fee
+    if ($latefee > 0) {
+      $lateFeeLineItem = self::apishortcut('LineItem', 'create', [
+        'entity_table' => "civicrm_participant",
+        'qty' => 1,
+        'unit_price' => $latefee,
+        'line_total' => $latefee,
+        'non_deductible_amount' => 0,
+        'tax_amount' => 0,
+        'price_field_id' => "",
+        'contribution_id' => $contribId,
+        'label' => "Late Fee - $paymentmade",
+        'entity_id' => $pid,
+      ]);
     }
+
+    if ($pfee > 0) {
+      $pFeeLineItem = self::apishortcut('LineItem', 'create', [
+        'entity_table' => "civicrm_participant",
+        'qty' => 1,
+        'unit_price' => $pfee,
+        'line_total' => $pfee,
+        'contribution_id' => $contribId,
+        'label' => "Processing Fee - {$paymentmade}",
+        'entity_id' => $pid,
+        'non_deductible_amount' => 0,
+        'tax_amount' => 0,
+        'price_field_id' => "",
+      ]);
+    }
+
+    // Update the contribution total
+    // $allLineItems = self::apishortcut('LineItem', 'get', [
+    //   'contribution_id' => $contribId,
+    // ]);
+    // if (!empty($allLineItems['values'])) {
+    //   $total = 0;
+    //   foreach ($allLineItems['values'] as $key => $lineItemDetails) {
+    //     $total = $total + $lineItemDetails['line_total'];
+    //   }
+    //   $allLineItems = self::apishortcut('Contribution', 'create', [
+    //     'id' => $contribId,
+    //     'total_amount' => $total,
+    //   ]);
+    // }
+
   }
 
 }
