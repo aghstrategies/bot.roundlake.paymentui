@@ -51,7 +51,7 @@ HERESQL;
     $dao = CRM_Core_DAO::executeQuery($sql);
     if ($dao->N) {
       while ($dao->fetch()) {
-        $totalDue = 0;
+        $paid = $totalDue = 0;
         $lineItems = self::apishortcut('LineItem', 'get', ['contribution_id' => $dao->contribution_id]);
         foreach ($lineItems['values'] as $lineItemID => $lineItemDetails) {
           if ($lineItemDetails['financial_type_id'] != 1) {
@@ -61,10 +61,12 @@ HERESQL;
         // print_r($lineItems); die();
         // Get the payment details of all the participants
         $paymentDetails = CRM_Contribute_BAO_Contribution::getPaymentInfo($dao->id, 'event', FALSE, TRUE);
+        $paid = $totalDue - $paymentDetails['balance'];
+
         // print_r($paymentDetails); die();
         //Get display names of the participants and additional participants, if any
         $displayNames   = self::getDisplayNames($dao->id, $dao->display_name);
-        $paymentSched   = self::getLateFees($dao->event_id, $paymentDetails['paid'], $paymentDetails['balance']);
+        $paymentSched   = self::getLateFees($dao->event_id, $paid, $paymentDetails['balance']);
         if ($paymentDetails['balance'] == 0) {
           $paymentSched['totalDue'] = 0;
         }
@@ -85,7 +87,7 @@ HERESQL;
         $participantInfo[$dao->id]['event_name']      = $dao->title;
         $participantInfo[$dao->id]['contact_name']    = $displayNames;
         $participantInfo[$dao->id]['total_amount']    = $totalDue;
-        $participantInfo[$dao->id]['paid']            = $totalDue - $paymentDetails['balance'];
+        $participantInfo[$dao->id]['paid']            = $paid;
         $participantInfo[$dao->id]['balance']         = $paymentDetails['balance'];
         $participantInfo[$dao->id]['latefees']        = $paymentSched['lateFee'];
         $participantInfo[$dao->id]['nextDueDate']     = $paymentSched['nextDueDate'];
