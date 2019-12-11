@@ -400,7 +400,7 @@ HERESQL;
     // Add additional financial transactions for each partial payment
     // $trxnRecord = CRM_Paymentui_BAO_Paymentui::recordAdditionalPayment($participantInfo[$pid]['contribution_id'], $paymentParams, 'owed', $pId);
     $paymentParams['participant_id'] = $pid;
-    $paymentParams['contribution_id'] = $participantInfo[$pid]['contribution_id'];
+    $paymentParams['entity_id'] = $paymentParams['contribution_id'] = $participantInfo[$pid]['contribution_id'];
     $paymentParams['is_send_contribution_notification'] = FALSE;
     $paymentParams['trxn_id'] = $payResponse['trxn_id'];
     $trxnRecord = CRM_Paymentui_BAO_Paymentui::apishortcut('Payment', 'create', $paymentParams);
