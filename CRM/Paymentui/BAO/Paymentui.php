@@ -21,7 +21,12 @@ class CRM_Paymentui_BAO_Paymentui extends CRM_Event_DAO_Participant {
     catch (CiviCRM_API3_Exception $e) {
       $error = $e->getMessage();
       CRM_Core_Error::debug_log_message(
-        ts('API Error: %1', array(1 => $error, 'domain' => 'bot.roundlake.paymentui'))
+        ts('API %3 - %2 Error: %1', array(
+          1 => $error,
+          2 => $action,
+          3 => $entity,
+          'domain' => 'bot.roundlake.paymentui',
+        ))
       );
     }
     return $result;
