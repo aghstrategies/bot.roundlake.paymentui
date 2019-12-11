@@ -51,8 +51,17 @@ HERESQL;
     $dao = CRM_Core_DAO::executeQuery($sql);
     if ($dao->N) {
       while ($dao->fetch()) {
+        $totalDue = 0;
+        $lineItems = self::apishortcut('LineItem', 'get', ['contribution_id' => $dao->contribution_id]);
+        foreach ($lineItems['values'] as $lineItemID => $lineItemDetails) {
+          if ($lineItemDetails['financial_type_id'] != 1) {
+            $totalDue = $totalDue + $lineItemDetails['line_total'];
+          }
+        }
+        // print_r($lineItems); die();
         // Get the payment details of all the participants
         $paymentDetails = CRM_Contribute_BAO_Contribution::getPaymentInfo($dao->id, 'event', FALSE, TRUE);
+        // print_r($paymentDetails); die();
         //Get display names of the participants and additional participants, if any
         $displayNames   = self::getDisplayNames($dao->id, $dao->display_name);
         $paymentSched   = self::getLateFees($dao->event_id, $paymentDetails['paid'], $paymentDetails['balance']);
@@ -60,14 +69,14 @@ HERESQL;
           $paymentSched['totalDue'] = 0;
         }
 
-        // TODO subtract ccfees added by the percentage price field extension
-        $ccFeesSQL = <<<HERESQL
-        SELECT line_total FROM `civicrm_line_item` as li
-JOIN `civicrm_percentagepricesetfield` as p
-ON li.price_field_id = p.field_id
-WHERE li.contribution_id = $dao->contribution_id
-HERESQL;
-        $percentagePriceFee = CRM_Core_DAO::singleValueQuery($ccFeesSQL);
+        // TODO do we need this - subtract ccfees added by the percentage price field extension
+//         $ccFeesSQL = <<<HERESQL
+//         SELECT line_total FROM `civicrm_line_item` as li
+// JOIN `civicrm_percentagepricesetfield` as p
+// ON li.price_field_id = p.field_id
+// WHERE li.contribution_id = $dao->contribution_id
+// HERESQL;
+//         $percentagePriceFee = CRM_Core_DAO::singleValueQuery($ccFeesSQL);
 
         //Create an array with all the participant and payment information
         $participantInfo[$dao->id]['pid']             = $dao->id;
@@ -75,8 +84,8 @@ HERESQL;
         $participantInfo[$dao->id]['contribution_id'] = $dao->contribution_id;
         $participantInfo[$dao->id]['event_name']      = $dao->title;
         $participantInfo[$dao->id]['contact_name']    = $displayNames;
-        $participantInfo[$dao->id]['total_amount']    = $paymentDetails['total'] - $percentagePriceFee;
-        $participantInfo[$dao->id]['paid']            = $paymentDetails['paid'] - $percentagePriceFee;
+        $participantInfo[$dao->id]['total_amount']    = $totalDue;
+        $participantInfo[$dao->id]['paid']            = $totalDue - $paymentDetails['balance'];
         $participantInfo[$dao->id]['balance']         = $paymentDetails['balance'];
         $participantInfo[$dao->id]['latefees']        = $paymentSched['lateFee'];
         $participantInfo[$dao->id]['nextDueDate']     = $paymentSched['nextDueDate'];
@@ -248,60 +257,63 @@ HERESQL;
        <th>Cost of Program</th>
        <th>Paid to Date</th>
        <th>Total Balance Owed</th>
-    ';
-    if (!$receipt) {
-      $table .= '
-        <th>Late Fee Applies On</th>
-        <th>Late Fees</th>
-        <th>Next Payment Due Amount</th>
-      </tr></thead><tbody>';
-      foreach ($participantInfo as $row) {
-        $table .= "
-         <tr class=" . $row['rowClass'] . ">
-           <td>" . $row['event_name'] . "</td>
-           <td>" . $row['contact_name'] . "</td>
-           <td> $" . self::formatNumberAsMoney($row['total_amount']) . "</td>
-           <td> $" . self::formatNumberAsMoney($row['paid']) . "</td>
-           <td> $" . self::formatNumberAsMoney($row['balance']) . "</td>
-           <td>" . $row['nextDueDate'] . "</td>
-           <td> $" . self::formatNumberAsMoney(floatval($row['latefees'])) . "</td>
-           <td> $" . self::formatNumberAsMoney($row['totalDue']) . "</td>
-         </tr>
-       ";
-      }
-      $table .= "</tbody></table>";
+       <th>Late Fee Applies On</th>
+       <th>Late Fees</th>
+       <th>Next Payment Due Amount</th>
+     </tr></thead><tbody>';
+    foreach ($participantInfo as $row) {
+      $table .= "
+       <tr class=" . $row['rowClass'] . ">
+         <td>" . $row['event_name'] . "</td>
+         <td>" . $row['contact_name'] . "</td>
+         <td> $" . self::formatNumberAsMoney($row['total_amount']) . "</td>
+         <td> $" . self::formatNumberAsMoney($row['paid']) . "</td>
+         <td> $" . self::formatNumberAsMoney($row['balance']) . "</td>
+         <td>" . $row['nextDueDate'] . "</td>
+         <td> $" . self::formatNumberAsMoney(floatval($row['latefees'])) . "</td>
+         <td> $" . self::formatNumberAsMoney($row['totalDue']) . "</td>
+       </tr>
+     ";
     }
-    if ($receipt) {
-      $lateFeeTotal = 0;
-      $totalAmountPaid = 0;
-      $table .= '
-        <th>Late Fees</th>
-        <th>Payment Made</th>
-      </tr></thead><tbody>';
-      foreach ($participantInfo as $row) {
-        $table .= "
-         <tr class=" . $row['rowClass'] . ">
-           <td>" . $row['event_name'] . "</td>
-           <td>" . $row['contact_name'] . "</td>
-           <td> $" . self::formatNumberAsMoney($row['total_amount']) . "</td>
-           <td> $" . self::formatNumberAsMoney(($row['paid'] + $row['partial_payment_pay'])) . "</td>
-           <td> $" . self::formatNumberAsMoney(($row['balance'] - $row['partial_payment_pay'])) . "</td>
-           <td> $" . self::formatNumberAsMoney(floatval($row['latefees'])) . "</td>
-           <td> $" . self::formatNumberAsMoney($row['partial_payment_pay']) . "</td>
-         </tr>
-       ";
-        if (!empty($row['latefees'])) {
-          $lateFeeTotal = $lateFeeTotal + $row['latefees'];
-        }
-        if (!empty($row['partial_payment_pay'])) {
-          $totalAmountPaid = $totalAmountPaid + $row['partial_payment_pay'];
-        }
+    $table .= "</tbody></table>";
+    return $table;
+  }
+
+  public static function buildReceiptEmailTable($participantInfo) {
+    $lateFeeTotal = 0;
+    $totalAmountPaid = 0;
+    $table = '<table class="partialPayment" border="1" cellpadding="4" cellspacing="1" style="border-collapse: collapse; text-align: left">
+     <thead><tr>
+       <th>Participant</th>
+       <th>Cost of Program</th>
+       <th>Paid to Date</th>
+       <th>Total Balance Owed</th>
+       <th>Late Fees</th>
+       <th>Processing Fees</th>
+       <th>Payment Made</th>
+       <th>Total for this Participant</th>
+    </tr></thead><tbody>';
+    foreach ($participantInfo as $row) {
+      $table .= "
+       <tr class=" . $row['rowClass'] . ">
+         <td>" . $row['contact_name'] . "</br>" . $row['event_name'] . "</td>
+         <td> $" . self::formatNumberAsMoney($row['total_amount']) . "</td>
+         <td> $" . self::formatNumberAsMoney(($row['paid'] + $row['partial_payment_pay'])) . "</td>
+         <td> $" . self::formatNumberAsMoney(($row['balance'] - $row['partial_payment_pay'])) . "</td>
+         <td> $" . self::formatNumberAsMoney(floatval($row['latefees'])) . "</td>
+         <td> $" . self::formatNumberAsMoney(floatval($row['processingfees'])) . "</td>
+         <td> $" . self::formatNumberAsMoney(floatval($row['partial_payment_pay'])) . "</td>
+         <td> $" . self::formatNumberAsMoney(floatval($row['participant_total'])) . "</td>
+       </tr>
+     ";
+
+      if (!empty($row['participant_total'])) {
+        $totalAmountPaid = $totalAmountPaid + $row['participant_total'];
       }
-      $table .= "</tbody></table><br>";
-      $table .= "<p><strong>Late Fees:</strong> $ " . self::formatNumberAsMoney(floatval($lateFeeTotal)) . " </p>";
-      $table .= "<p><strong>Processing Fee:</strong> $ " . self::formatNumberAsMoney(floatval($processingFee)) . " </p>";
-      $table .= "<p><strong>Total:</strong> $ " . self::formatNumberAsMoney(floatval($totalAmountPaid) + floatval($lateFeeTotal) + floatval($processingFee)) . " </p>";
     }
+    $table .= "</tbody></table><br>";
+    $table .= "<p><strong>Total:</strong> $ " . self::formatNumberAsMoney(floatval($totalAmountPaid)) . " </p>";
+
     return $table;
   }
 
@@ -386,7 +398,7 @@ HERESQL;
     $paymentParams['trxn_id'] = $payResponse['trxn_id'];
     $trxnRecord = CRM_Paymentui_BAO_Paymentui::apishortcut('Payment', 'create', $paymentParams);
     if (!empty($trxnRecord['id'])) {
-      $participantInfo[$pId]['success'] = 1;
+      $participantInfo[$pid]['success'] = 1;
     }
 
     return $participantInfo;
@@ -399,8 +411,8 @@ HERESQL;
    * @param  [type] $paymentParams           [description]
    * @return [type]                          [description]
    */
-  public static function send_receipt($participantInfo, $processingFeeForPayment, $paymentParams) {
-    $receiptTable = CRM_Paymentui_BAO_Paymentui::buildEmailTable($participantInfo, TRUE, $processingFeeForPayment);
+  public static function send_receipt($participantInfo, $paymentParams) {
+    $receiptTable = CRM_Paymentui_BAO_Paymentui::buildReceiptEmailTable($participantInfo);
     $body = "<p>Thank you for completing your payment. See details below:</p>
       <div>$receiptTable</div>
       <p>Please contact us with any concerns.</p>
@@ -429,7 +441,6 @@ HERESQL;
    * @return [type]            [description]
    */
   public static function update_line_items_for_fees($pid, $pfee, $latefee, $contribId) {
-
     // get the Date
     $paymentmade = date('Y-m-d H:i:s');
     // Create new line items for each fee
@@ -445,6 +456,7 @@ HERESQL;
         'contribution_id' => $contribId,
         'label' => "Late Fee - $paymentmade",
         'entity_id' => $pid,
+        'financial_type_id' => "Donation",
       ]);
     }
 
@@ -460,24 +472,9 @@ HERESQL;
         'non_deductible_amount' => 0,
         'tax_amount' => 0,
         'price_field_id' => "",
+        'financial_type_id' => "Donation",
       ]);
     }
-
-    // Update the contribution total
-    // $allLineItems = self::apishortcut('LineItem', 'get', [
-    //   'contribution_id' => $contribId,
-    // ]);
-    // if (!empty($allLineItems['values'])) {
-    //   $total = 0;
-    //   foreach ($allLineItems['values'] as $key => $lineItemDetails) {
-    //     $total = $total + $lineItemDetails['line_total'];
-    //   }
-    //   $allLineItems = self::apishortcut('Contribution', 'create', [
-    //     'id' => $contribId,
-    //     'total_amount' => $total,
-    //   ]);
-    // }
-
   }
 
 }
