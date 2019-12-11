@@ -95,7 +95,9 @@ HERESQL;
         $participantInfo[$dao->id]['paid']            = $paid - $percentagePriceFee;
         $participantInfo[$dao->id]['balance']         = $paymentDetails['balance'];
         $participantInfo[$dao->id]['latefees']        = $paymentSched['lateFee'];
-        $participantInfo[$dao->id]['nextDueDate']     = $paymentSched['nextDueDate'];
+        if (!empty($paymentSched['nextDueDate'])) {
+          $participantInfo[$dao->id]['nextDueDate'] = $paymentSched['nextDueDate'];
+        }
         $participantInfo[$dao->id]['totalDue']        = $paymentSched['totalDue'];
         $participantInfo[$dao->id]['rowClass']        = 'row_' . $dao->id;
         $participantInfo[$dao->id]['payLater']        = $paymentDetails['payLater'];
