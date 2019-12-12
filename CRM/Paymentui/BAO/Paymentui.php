@@ -376,6 +376,7 @@ HERESQL;
    * @param $paymentParams - Payment Processor parameters
    * @param $participantInfo - participantID as key and contributionID, ContactID, PayLater, Partial Payment Amount
    * @param $payResponse - response from paymentprocessor.pay call
+   * @param $pid - participant id
    * @return participantInfo array with 'Success' flag
    */
   public static function process_partial_payments($paymentParams, &$participantInfo, $payResponse, $pid) {
@@ -416,7 +417,6 @@ HERESQL;
   /**
    * Send Receipt
    * @param  [type] $participantInfo         [description]
-   * @param  [type] $processingFeeForPayment [description]
    * @param  [type] $paymentParams           [description]
    * @return [type]                          [description]
    */
