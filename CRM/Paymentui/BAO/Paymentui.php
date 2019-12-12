@@ -297,15 +297,15 @@ HERESQL;
        <th>Cost of Program</th>
        <th>Paid to Date</th>
        <th>Total Balance Owed</th>
-       <th>Late Fees</th>
-       <th>Processing Fees</th>
-       <th>Payment Made</th>
-       <th>Total for this Participant</th>
+       <th>Late Fee</th>
+       <th>Processing Fee</th>
+       <th>Payment</th>
+       <th>Total Charged for this Participant</th>
     </tr></thead><tbody>';
     foreach ($participantInfo as $row) {
       $table .= "
        <tr class=" . $row['rowClass'] . ">
-         <td>" . $row['contact_name'] . "</br>" . $row['event_name'] . "</td>
+         <td>" . $row['event_name'] . " - " . $row['contact_name'] . "</td>
          <td> $" . self::formatNumberAsMoney($row['total_amount']) . "</td>
          <td> $" . self::formatNumberAsMoney(($row['paid'] + $row['partial_payment_pay'])) . "</td>
          <td> $" . self::formatNumberAsMoney(($row['balance'] - $row['partial_payment_pay'])) . "</td>
