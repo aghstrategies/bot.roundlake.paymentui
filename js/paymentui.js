@@ -7,13 +7,14 @@ CRM.$(function ($) {
 
   var calculateTotal = function () {
     var total = 0;
-    var subtotal = 0;
-    var pfee = 0;
-    var latefee = 0;
-    var partId = '';
-    var paymentAmount = 0;
 
     $.each($("input[name^='payment']"), function () {
+      var subtotal = 0;
+      var pfee = 0;
+      var latefee = 0;
+      var partId = '';
+      var paymentAmount = 0;
+
       partId = $(this).attr('id').substring(8);
 
       // get late fees
