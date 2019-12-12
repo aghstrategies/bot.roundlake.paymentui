@@ -92,13 +92,13 @@ HERESQL;
         $participantInfo[$dao->id]['event_name']      = $dao->title;
         $participantInfo[$dao->id]['contact_name']    = $displayNames;
         $participantInfo[$dao->id]['total_amount']    = $totalDue - $percentagePriceFee;
-        $participantInfo[$dao->id]['paid']            = $paid - $percentagePriceFee;
-        $participantInfo[$dao->id]['balance']         = $paymentDetails['balance'];
+        $participantInfo[$dao->id]['paid']            = $paid;
+        $participantInfo[$dao->id]['balance']         = $paymentDetails['balance'] - $percentagePriceFee;
         $participantInfo[$dao->id]['latefees']        = $paymentSched['lateFee'];
         if (!empty($paymentSched['nextDueDate'])) {
           $participantInfo[$dao->id]['nextDueDate'] = $paymentSched['nextDueDate'];
         }
-        $participantInfo[$dao->id]['totalDue']        = $paymentSched['totalDue'];
+        $participantInfo[$dao->id]['totalDue']        = $paymentSched['totalDue'] - $percentagePriceFee;
         $participantInfo[$dao->id]['rowClass']        = 'row_' . $dao->id;
         $participantInfo[$dao->id]['payLater']        = $paymentDetails['payLater'];
       }
