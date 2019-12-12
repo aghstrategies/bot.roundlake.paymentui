@@ -451,7 +451,7 @@ HERESQL;
    */
   public static function update_line_items_for_fees($pid, $pfee, $latefee, $contribId) {
     // get the Date
-    $paymentmade = date('Y-m-d H:i:s');
+    $paymentmade = date("F j, Y, g:i a");
     // Create new line items for each fee
     if ($latefee > 0) {
       $lateFeeLineItem = self::apishortcut('LineItem', 'create', [
