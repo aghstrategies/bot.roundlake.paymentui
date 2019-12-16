@@ -264,6 +264,8 @@ class CRM_Paymentui_Form_Paymentui extends CRM_Core_Form {
             // Record payment in CiviCRM
             $paymentProcessedInfo = CRM_Paymentui_BAO_Paymentui::process_partial_payments($paymentParams, $this->_participantInfo, $pay['values'][0], $pid);
             $paymentSuccess[$pid] = TRUE;
+            $this->_participantInfo[$pid]['success'] = 1;
+
             CRM_Core_Session::setStatus(ts('For %2 - %1 for $ %3.', [
               1 => $this->_participantInfo[$pid]['contact_name'],
               2 => $this->_participantInfo[$pid]['event_name'],

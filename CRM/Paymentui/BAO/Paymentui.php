@@ -316,7 +316,7 @@ HERESQL;
        <th>Total Charged for this Participant</th>
     </tr></thead><tbody>';
     foreach ($participantInfo as $row) {
-      if (!empty($row['participant_total']) && $row['success'] = 1) {
+      if (!empty($row['participant_total']) && $row['success'] == 1) {
         $table .= "
          <tr class=" . $row['rowClass'] . ">
            <td>" . $row['event_name'] . " - " . $row['contact_name'] . "</td>
