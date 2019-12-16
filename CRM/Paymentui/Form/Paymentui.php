@@ -228,9 +228,6 @@ class CRM_Paymentui_Form_Paymentui extends CRM_Core_Form {
         // save participant total to participant info
         $this->_participantInfo[$pid]['participant_total'] = $partTotal;
 
-        // update contribution to include line items for fees
-        CRM_Paymentui_BAO_Paymentui::update_line_items_for_fees($pid, $pfee, $latefee, $this->_participantInfo[$pid]['contribution_id']);
-
         $paymentParams['contribution_id'] = $this->_participantInfo[$pid]['contribution_id'];
         $paymentParams['amount'] = $partTotal;
 
@@ -259,7 +256,10 @@ class CRM_Paymentui_Form_Paymentui extends CRM_Core_Form {
           ]), ts('Error Processing Payment'), 'error');
         }
         // Payment Processed sucessfully
-        else {
+        if (!empty($pay['values'][0]) && !empty($pay['is_error']) && $pay['is_error'] == 0) {
+          // update contribution to include line items for fees
+          CRM_Paymentui_BAO_Paymentui::update_line_items_for_fees($pid, $pfee, $latefee, $this->_participantInfo[$pid]['contribution_id']);
+
           // Record payment in CiviCRM
           $paymentProcessedInfo = CRM_Paymentui_BAO_Paymentui::process_partial_payments($paymentParams, $this->_participantInfo, $pay['values'][0], $pid);
           $paymentSuccess[$pid] = TRUE;
