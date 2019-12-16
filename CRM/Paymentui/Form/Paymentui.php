@@ -168,7 +168,7 @@ class CRM_Paymentui_Form_Paymentui extends CRM_Core_Form {
    * @return void
    */
   public function postProcess() {
-    $paymentSuccess = TRUE;
+    $paymentSuccess = [];
     // $values = $this->exportValues();
     $this->_params = $this->controller->exportValues($this->_name);
     $totalAmount = 0;
@@ -194,7 +194,6 @@ class CRM_Paymentui_Form_Paymentui extends CRM_Core_Form {
 
     $paymentParams = $this->_params;
     CRM_Core_Payment_Form::mapParams($this->_bltID, $paymentParams, $paymentParams, TRUE);
-
     foreach ($this->_params['payment'] as $pid => $pVal) {
       // blank canvas
       $partTotal = 0;
@@ -203,17 +202,20 @@ class CRM_Paymentui_Form_Paymentui extends CRM_Core_Form {
 
       //save partial pay amount to participant info array
       $this->_participantInfo[$pid]['partial_payment_pay'] = $pVal;
+      if (isset($pVal) && $pVal > 0) {
+        $partTotal = $partTotal + $pVal;
 
-      //calculate processing fee
-      if ($processingFee !== 0) {
-        //  Calculate processing fee  (calculate here because we do not trust js)
-        $pfee = round($pVal * $processingFee, 2);
+        //calculate processing fee
+        if ($processingFee !== 0) {
+          //  Calculate processing fee  (calculate here because we do not trust js)
+          $pfee = round($pVal * $processingFee, 2);
 
-        // Add processing fee to total for this participant
-        $partTotal = $pVal + $pfee;
+          // Add processing fee to total for this participant
+          $partTotal = $partTotal + $pfee;
 
-        $this->_participantInfo[$pid]['processingfees'] = $pfee;
+          $this->_participantInfo[$pid]['processingfees'] = $pfee;
 
+        }
       }
 
       // If there is a late fee add it
@@ -222,10 +224,11 @@ class CRM_Paymentui_Form_Paymentui extends CRM_Core_Form {
         $partTotal = $partTotal + $latefee;
       }
       if ($partTotal > 0) {
+        $totalAmount = $totalAmount + $partTotal;
         // save participant total to participant info
         $this->_participantInfo[$pid]['participant_total'] = $partTotal;
 
-        // TODO update contribution to include line items for fees
+        // update contribution to include line items for fees
         CRM_Paymentui_BAO_Paymentui::update_line_items_for_fees($pid, $pfee, $latefee, $this->_participantInfo[$pid]['contribution_id']);
 
         $paymentParams['contribution_id'] = $this->_participantInfo[$pid]['contribution_id'];
@@ -239,34 +242,44 @@ class CRM_Paymentui_Form_Paymentui extends CRM_Core_Form {
         CRM_Core_Error::debug_var('Info sent to Authorize.net from the partial payment form', $paymentParamsToPrintToLog);
 
         // Log participant information just in case
-        CRM_Core_Error::debug_var('Participant Info', $this->_participantInfo);
+        CRM_Core_Error::debug_var('Participant Info', $this->_participantInfo[$pid]);
 
         if (!empty($pay['is_error']) && $pay['is_error'] == 1) {
-          CRM_Core_Session::setStatus(ts($pay['error_message']), 'Error Processing Payment', 'no-popup');
-          $paymentSuccess = FALSE;
+          $this->_participantInfo[$pid]['success'] = 0;
+          CRM_Core_Session::setStatus(ts('For %2 - %1 for $ %3.', [
+            1 => $this->_participantInfo[$pid]['contact_name'],
+            2 => $this->_participantInfo[$pid]['event_name'],
+            3 => $this->_participantInfo[$pid]['participant_total'],
+          ]), ts('Error Processing Payment'), 'error');
+          //$paymentSuccess[$pid] = FALSE;
           // TODO if payment fails ...?
         }
         // Payment Processed sucessfully
         else {
           // Record payment in CiviCRM
           $paymentProcessedInfo = CRM_Paymentui_BAO_Paymentui::process_partial_payments($paymentParams, $this->_participantInfo, $pay['values'][0], $pid);
+          $paymentSuccess[$pid] = TRUE;
+          CRM_Core_Session::setStatus(ts('For %2 - %1 for $ %3.', [
+            1 => $this->_participantInfo[$pid]['contact_name'],
+            2 => $this->_participantInfo[$pid]['event_name'],
+            3 => $this->_participantInfo[$pid]['participant_total'],
+          ]), ts('Successfully Processed Payment'), 'success');
         }
       }
     }
-    if ($paymentSuccess == TRUE) {
+    if (!empty($paymentSuccess)) {
       // TODO Refactor
       CRM_Paymentui_BAO_Paymentui::send_receipt($this->_participantInfo, $paymentParams);
 
       parent::postProcess();
 
-      //Define status message
-      $statusMsg = ts('The payment(s) have been processed successfully.');
-      CRM_Core_Session::setStatus($statusMsg, ts('Saved'), 'success');
-
       //Redirect to the same URL
       $url     = CRM_Utils_System::url('civicrm/addpayment', "reset=1");
       $session = CRM_Core_Session::singleton();
       CRM_Utils_System::redirect($url);
+    }
+    if ($totalAmount == 0) {
+      CRM_Core_Session::setStatus(ts('No Payment amount entered'), ts('No Payments Processed'), 'success');
     }
   }
 

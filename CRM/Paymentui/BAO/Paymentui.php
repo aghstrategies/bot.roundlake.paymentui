@@ -32,6 +32,11 @@ class CRM_Paymentui_BAO_Paymentui extends CRM_Event_DAO_Participant {
     return $result;
   }
 
+  /**
+   * Get Details about Relevant Participants
+   * @param  int $contactID Contact ID of logged in contact
+   * @return array details about all relevant participant records
+   */
   public static function getParticipantInfo($contactID) {
     $relatedContactIDs   = self::getRelatedContacts($contactID);
     $relatedContactIDs[] = $contactID;
@@ -288,6 +293,11 @@ HERESQL;
     return $table;
   }
 
+  /**
+   * Build Receipt Text
+   * @param  array $participantInfo  details about oayments processed
+   * @return [type]                  [description]
+   */
   public static function buildReceiptEmailTable($participantInfo) {
     $lateFeeTotal = 0;
     $totalAmountPaid = 0;
@@ -303,20 +313,19 @@ HERESQL;
        <th>Total Charged for this Participant</th>
     </tr></thead><tbody>';
     foreach ($participantInfo as $row) {
-      $table .= "
-       <tr class=" . $row['rowClass'] . ">
-         <td>" . $row['event_name'] . " - " . $row['contact_name'] . "</td>
-         <td> $" . self::formatNumberAsMoney($row['total_amount']) . "</td>
-         <td> $" . self::formatNumberAsMoney(($row['paid'] + $row['partial_payment_pay'])) . "</td>
-         <td> $" . self::formatNumberAsMoney(($row['balance'] - $row['partial_payment_pay'])) . "</td>
-         <td> $" . self::formatNumberAsMoney(floatval($row['latefees'])) . "</td>
-         <td> $" . self::formatNumberAsMoney(floatval($row['processingfees'])) . "</td>
-         <td> $" . self::formatNumberAsMoney(floatval($row['partial_payment_pay'])) . "</td>
-         <td> $" . self::formatNumberAsMoney(floatval($row['participant_total'])) . "</td>
-       </tr>
-     ";
-
       if (!empty($row['participant_total'])) {
+        $table .= "
+         <tr class=" . $row['rowClass'] . ">
+           <td>" . $row['event_name'] . " - " . $row['contact_name'] . "</td>
+           <td> $" . self::formatNumberAsMoney($row['total_amount']) . "</td>
+           <td> $" . self::formatNumberAsMoney(($row['paid'] + $row['partial_payment_pay'])) . "</td>
+           <td> $" . self::formatNumberAsMoney(($row['balance'] - $row['partial_payment_pay'])) . "</td>
+           <td> $" . self::formatNumberAsMoney(floatval($row['latefees'])) . "</td>
+           <td> $" . self::formatNumberAsMoney(floatval($row['processingfees'])) . "</td>
+           <td> $" . self::formatNumberAsMoney(floatval($row['partial_payment_pay'])) . "</td>
+           <td> $" . self::formatNumberAsMoney(floatval($row['participant_total'])) . "</td>
+         </tr>
+       ";
         $totalAmountPaid = $totalAmountPaid + $row['participant_total'];
       }
     }
@@ -380,9 +389,6 @@ HERESQL;
    * @return participantInfo array with 'Success' flag
    */
   public static function process_partial_payments($paymentParams, &$participantInfo, $payResponse, $pid) {
-    // if (!$participantInfo[$pid]['contribution_id'] || !$pId) {
-    //   $participantInfo[$pId]['success'] = 0;
-    // }
 
     // Update participant status for pending from pay later registrations
     //Update participant Status from 'Pending from Pay Later' to 'Partially Paid'
@@ -410,15 +416,18 @@ HERESQL;
     if (!empty($trxnRecord['id'])) {
       $participantInfo[$pid]['success'] = 1;
     }
+    else {
+      CRM_Core_Error::debug_var('Payment Create Params', $paymentParams);
+      CRM_Core_Error::debug_var('Payment Create', $trxnRecord);
+    }
 
     return $participantInfo;
   }
 
   /**
    * Send Receipt
-   * @param  [type] $participantInfo         [description]
-   * @param  [type] $paymentParams           [description]
-   * @return [type]                          [description]
+   * @param  array $participantInfo         details about particpant
+   * @param  array $paymentParams           details about payment
    */
   public static function send_receipt($participantInfo, $paymentParams) {
     $receiptTable = CRM_Paymentui_BAO_Paymentui::buildReceiptEmailTable($participantInfo);
@@ -442,12 +451,11 @@ HERESQL;
   }
 
   /**
-   * [update_line_items_for_fees description]
-   * @param  [type] $pid       [description]
-   * @param  [type] $pfee      [description]
-   * @param  [type] $latefee   [description]
-   * @param  [type] $contribId [description]
-   * @return [type]            [description]
+   * Create Line items for fees
+   * @param  int $pid        Participant Id
+   * @param  float $pfee     Processing Fee
+   * @param  int $latefee    Late Fee
+   * @param  int $contribId  Contribution ID
    */
   public static function update_line_items_for_fees($pid, $pfee, $latefee, $contribId) {
     // get the Date
