@@ -15,11 +15,14 @@ class CRM_Paymentui_BAO_Paymentui extends CRM_Event_DAO_Participant {
    * @return array         results
    */
   public static function apishortcut($entity, $action, $params) {
+    $result = [];
     try {
       $result = civicrm_api3($entity, $action, $params);
     }
     catch (CiviCRM_API3_Exception $e) {
       $error = $e->getMessage();
+      $result['is_error'] = 1;
+      $result['error_message'] = $error;
       CRM_Core_Error::debug_log_message(
         ts('API %3 - %2 Error: %1', array(
           1 => $error,

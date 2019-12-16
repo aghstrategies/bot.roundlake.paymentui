@@ -237,22 +237,26 @@ class CRM_Paymentui_Form_Paymentui extends CRM_Core_Form {
         $pay = CRM_Paymentui_BAO_Paymentui::apishortcut('PaymentProcessor', 'pay', $paymentParams);
 
         // Log payment details info to ConfigAndLog
-        $paymentParamsToPrintToLog = $pay['values'][0];
-        unset($paymentParamsToPrintToLog['credit_card_number']);
-        CRM_Core_Error::debug_var('Info sent to Authorize.net from the partial payment form', $paymentParamsToPrintToLog);
+        if (!empty($pay['values'][0])) {
+          $paymentParamsToPrintToLog = $pay['values'][0];
+          unset($paymentParamsToPrintToLog['credit_card_number']);
+          CRM_Core_Error::debug_var('Info sent to Authorize.net from the partial payment form', $paymentParamsToPrintToLog);
+        }
 
         // Log participant information just in case
         CRM_Core_Error::debug_var('Participant Info', $this->_participantInfo[$pid]);
 
         if (!empty($pay['is_error']) && $pay['is_error'] == 1) {
+          $paymentParamsToPrint = $paymentParams;
+          unset($paymentParamsToPrint['credit_card_number']);
+          CRM_Core_Error::debug_var('Info sent to Authorize.net from the partial payment form', $paymentParamsToPrint);
           $this->_participantInfo[$pid]['success'] = 0;
-          CRM_Core_Session::setStatus(ts('For %2 - %1 for $ %3.', [
+          CRM_Core_Session::setStatus(ts('For %2 - %1 for $ %3. %4', [
             1 => $this->_participantInfo[$pid]['contact_name'],
             2 => $this->_participantInfo[$pid]['event_name'],
             3 => $this->_participantInfo[$pid]['participant_total'],
+            4 => $pay['error_message'],
           ]), ts('Error Processing Payment'), 'error');
-          //$paymentSuccess[$pid] = FALSE;
-          // TODO if payment fails ...?
         }
         // Payment Processed sucessfully
         else {
