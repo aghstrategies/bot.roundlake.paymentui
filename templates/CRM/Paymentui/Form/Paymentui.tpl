@@ -18,24 +18,50 @@
 								<td class="">{$row.total_amount|crmMoney}</td>
 								<td class="">{$row.paid|crmMoney}</td>
 								<td class="balance">{$row.balance|crmMoney}</td>
-
 								<td class="payment">{$form.payment[$row.pid].html|crmMoney}</td>
 
 							</tr>
+
+							{* Late Fee Row *}
+							{if $form.latefee[$row.pid].html}
+
+							<tr class="{$row.rowClass}-latefees">
+								<td colspan=4></td>
+								<td class="balance">
+									<strong>Late Fee</strong></br>
+								</td>
+								<td class="payment">
+								  <span class="{$row.rowClass}-latefee">{$form.latefee[$row.pid].html|crmMoney}
+								</td>
+							</tr>
+							{/if}
+
+							{* Processing Fee Row *}
+							<tr class="{$row.rowClass}-pfees">
+								<td colspan=4></td>
+								<td class="balance">
+									<strong>Processing Fee</strong></br>
+								</td>
+								<td class="payment">
+									<span class="{$row.rowClass}-pfee">{$form.pfee[$row.pid].html|crmMoney}
+								</td>
+							</tr>
+
+							{* Subtotal Row *}
+							<tr class="{$row.rowClass}-subtotal">
+								<td colspan=4></td>
+								<td class="balance">
+									<strong>Total for this Participant</strong></br>
+								</td>
+								<td class="payment">
+									<span class="{$row.rowClass}-latefee">{$form.subtotal[$row.pid].html|crmMoney}
+								</td>
+							</tr>
+
 						{/foreach}
 						{if $contactId}
-						<tr class="sticky">
-							<td colspan = 5 scope="col"><strong>Processing Fee</strong></th>
-							<td class="font-size12pt "><span>$ </span><span name='creditCardFees' id ='creditCardFees'>0</span></td>
-						</tr>
-						{if $latefees}
-						<tr class="sticky">
-							<td colspan = 5 scope="col"><strong>Late Fees</strong></th>
-							<td class="font-size12pt "><span>$ </span><span name='latefees' id ='latefees'>{$latefees}</span></td>
-						</tr>
-						{/if}
 						<thead class="sticky">
-									<td colspan = 5 scope="col"><strong>Total</strong></th>
+									<td colspan = 5 scope="col"><strong>Total For All Participants</strong></th>
 									<td class="font-size12pt "><span>$ </span><span name='total' id ='total'>0</span></td>
 						</thead>
 						{/if}

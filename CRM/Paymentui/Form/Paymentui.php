@@ -29,18 +29,10 @@ class CRM_Paymentui_Form_Paymentui extends CRM_Core_Form {
     $processors = CRM_Financial_BAO_PaymentProcessor::getPaymentProcessors($capabilities = array('LiveMode'), $ids = FALSE);
     $processorToUse = CRM_Financial_BAO_PaymentProcessor::getDefault()->id;
     //get payment processor from setting
-    try {
-      $paymentProcessorSetting = civicrm_api3('Setting', 'get', array(
-        'sequential' => 1,
-        'return' => array("paymentui_processor"),
-      ));
-    }
-    catch (CiviCRM_API3_Exception $e) {
-      $error = $e->getMessage();
-      CRM_Core_Error::debug_log_message(
-        ts('API Error: %1', array(1 => $error, 'domain' => 'bot.roundlake.paymentui'))
-      );
-    }
+    $paymentProcessorSetting = CRM_Paymentui_BAO_Paymentui::apishortcut('Setting', 'get', array(
+      'sequential' => 1,
+      'return' => array("paymentui_processor"),
+    ));
     if (!empty($paymentProcessorSetting['values'][0]['paymentui_processor'])) {
       $processorToUse = $paymentProcessorSetting['values'][0]['paymentui_processor'];
     }
@@ -56,11 +48,13 @@ class CRM_Paymentui_Form_Paymentui extends CRM_Core_Form {
    */
   public function buildQuickForm() {
     CRM_Core_Resources::singleton()->addScriptFile('bot.roundlake.paymentui', 'js/paymentui.js');
-    $processingFee = 0;
+
+    $processingFee = 4;
     $fees = CRM_Paymentui_BAO_Paymentui::getFeesFromSettings();
     if (!empty($fees['processing_fee'])) {
       $processingFee = $fees['processing_fee'];
     }
+
     CRM_Core_Resources::singleton()->addVars('paymentui', array('processingFee' => $processingFee));
     //Get contact name of the logged in user
     $session     = CRM_Core_Session::singleton();
@@ -77,11 +71,12 @@ class CRM_Paymentui_Form_Paymentui extends CRM_Core_Form {
     $this->assign('contactId', $this->_contactId);
     $displayName = CRM_Contact_BAO_Contact::displayName($this->_contactId);
     $this->assign('displayName', $displayName);
+
     //Set column headers for the table
-    $columnHeaders = array('Event', 'Registrant', 'Cost', 'Paid to Date', '$$ remaining', 'Make Payment');
+    $columnHeaders = array('Event', 'Registrant', 'Cost', 'Paid to Date', '$ remaining', 'Make Payment');
     $this->assign('columnHeaders', $columnHeaders);
 
-    //Get event names for which logged in user and the related contacts are registered
+    //Get Info about this contact (and this contacts related contacts) Registrations
     $this->_participantInfo = CRM_Paymentui_BAO_Paymentui::getParticipantInfo($this->_contactId);
     $this->assign('participantInfo', $this->_participantInfo);
     $latefees = 0;
@@ -89,12 +84,15 @@ class CRM_Paymentui_Form_Paymentui extends CRM_Core_Form {
     if (!empty($this->_participantInfo)) {
       foreach ($this->_participantInfo as $pid => $pInfo) {
         $latefees = $latefees + $pInfo['latefees'];
-        $element =& $this->add('text', "payment[$pid]", NULL, array(), FALSE);
+        $this->add('text', "payment[$pid]", "payment[$pid]", array(), FALSE);
+        if ($pInfo['latefees'] > 0) {
+          $this->add('text', "latefee[$pid]", "latefee[$pid]", ['disabled' => TRUE], FALSE);
+          $defaults["latefee[$pid]"] = $pInfo['latefees'];
+        }
+        $this->add('text', "pfee[$pid]", "pfee[$pid]", ['disabled' => TRUE], FALSE);
+        $this->add('text', "subtotal[$pid]", "subtotal[$pid]", ['disabled' => TRUE], FALSE);
         $defaults["payment[$pid]"] = $pInfo['totalDue'];
       }
-    }
-    if ($latefees) {
-      $this->assign('latefees', $latefees);
     }
     $email = $this->add('text', "email", "Email to send receipt", array(), TRUE);
     $this->assign('email', $email);
@@ -141,16 +139,16 @@ class CRM_Paymentui_Form_Paymentui extends CRM_Core_Form {
     }
     //Validate credit card fields
     $required = array(
-      'credit_card_type'   => 'Credit Card Type',
-      'credit_card_number' => 'Credit Card Number',
-      'cvv2'               => 'CVV',
-      'billing_first_name' => 'Billing First Name',
-      'billing_last_name' => 'Billing Last Name',
-      'billing_street_address-5'  => 'Billing Street Address',
-      'billing_city-5' => 'City',
+      'credit_card_type'            => 'Credit Card Type',
+      'credit_card_number'          => 'Credit Card Number',
+      'cvv2'                        => 'CVV',
+      'billing_first_name'          => 'Billing First Name',
+      'billing_last_name'           => 'Billing Last Name',
+      'billing_street_address-5'    => 'Billing Street Address',
+      'billing_city-5'              => 'City',
       'billing_state_province_id-5' => 'State Province',
-      'billing_postal_code-5' => 'Postal Code',
-      'billing_country_id-5' => 'Country',
+      'billing_postal_code-5'       => 'Postal Code',
+      'billing_country_id-5'        => 'Country',
     );
 
     foreach ($required as $name => $fld) {
@@ -170,80 +168,126 @@ class CRM_Paymentui_Form_Paymentui extends CRM_Core_Form {
    * @return void
    */
   public function postProcess() {
-    $values = $this->exportValues();
+    $paymentSuccess = [];
+    // $values = $this->exportValues();
     $this->_params = $this->controller->exportValues($this->_name);
     $totalAmount = 0;
     $config = CRM_Core_Config::singleton();
-    $lateFees = 0;
     $fees = CRM_Paymentui_BAO_Paymentui::getFeesFromSettings();
     $processingFee = 4;
     $totalProcessingFee = 0;
+    // $lateFees = 0;
     if (!empty($fees['processing_fee'])) {
       $processingFee = $fees['processing_fee'];
     }
     $processingFee = $processingFee / 100;
-    //Calculate total amount paid and individual amount for each contribution
-    foreach ($this->_params['payment'] as $pid => $pVal) {
-      // add together partial pay amounts
-      $totalAmount += $pVal;
-      //save partial pay amount to particioant info array
-      $this->_participantInfo[$pid]['partial_payment_pay'] = $pVal;
-      // add together late fees
-      $lateFees += $this->_participantInfo[$pid]['latefees'];
-      //calculate processing fee
-      $this->_participantInfo[$pid]['processingfees'] = round($pVal * $processingFee, 2);
-      $totalProcessingFee += $this->_participantInfo[$pid]['processingfees'];
-    }
-    $totalAmount = $totalAmount + $lateFees + $totalProcessingFee;
+
     //Building params for CC processing
     $this->_params["state_province-{$this->_bltID}"] = $this->_params["billing_state_province-{$this->_bltID}"] = CRM_Core_PseudoConstant::stateProvinceAbbreviation($this->_params["billing_state_province_id-{$this->_bltID}"]);
-
     $this->_params["country-{$this->_bltID}"] = $this->_params["billing_country-{$this->_bltID}"] = CRM_Core_PseudoConstant::countryIsoCode($this->_params["billing_country_id-{$this->_bltID}"]);
-
     $this->_params['year']           = CRM_Core_Payment_Form::getCreditCardExpirationYear($this->_params);
     $this->_params['month']          = CRM_Core_Payment_Form::getCreditCardExpirationMonth($this->_params);
     $this->_params['ip_address']     = CRM_Utils_System::ipAddress();
-    $this->_params['amount']         = $totalAmount;
-    // $this->_params['amount_level']   = $params['amount_level'];
     $this->_params['currencyID']     = $config->defaultCurrency;
     $this->_params['payment_action'] = 'Sale';
-    $this->_params['invoiceID']      = md5(uniqid(rand(), TRUE));
+    $this->_params['payment_processor_id'] = $this->_paymentProcessor['id'];
 
     $paymentParams = $this->_params;
-    CRM_Core_Payment_Form::mapParams($this->_bltID, $this->_params, $paymentParams, TRUE);
-    // $payment = CRM_Core_Payment::singleton($this->_mode, $this->_paymentProcessor, $this);
-    $payment = Civi\Payment\System::singleton()->getByProcessor($this->_paymentProcessor);
+    CRM_Core_Payment_Form::mapParams($this->_bltID, $paymentParams, $paymentParams, TRUE);
+    foreach ($this->_params['payment'] as $pid => $pVal) {
+      // blank canvas
+      $partTotal = 0;
+      $pfee = 0;
+      $latefee = 0;
 
-    $result = $payment->doDirectPayment($paymentParams);
-    $paymentParamsToPrintToLog = $paymentParams;
-    unset($paymentParamsToPrintToLog['credit_card_number']);
-    CRM_Core_Error::debug_var('Info sent to Authorize.net from the partial payment form', $paymentParamsToPrintToLog);
+      //save partial pay amount to participant info array
+      $this->_participantInfo[$pid]['partial_payment_pay'] = $pVal;
+      if (isset($pVal) && $pVal > 0) {
+        $partTotal = $partTotal + $pVal;
 
-    if (!empty($result->_errors)) {
-      foreach ($result->_errors as $key => $errorDetails) {
-        if (!empty($errorDetails['message'])) {
-          CRM_Core_Session::setStatus(ts($errorDetails['message']), '', 'no-popup');
+        //calculate processing fee
+        if ($processingFee !== 0) {
+          //  Calculate processing fee  (calculate here because we do not trust js)
+          $pfee = round($pVal * $processingFee, 2);
+
+          // Add processing fee to total for this participant
+          $partTotal = $partTotal + $pfee;
+
+          $this->_participantInfo[$pid]['processingfees'] = $pfee;
+
+        }
+      }
+
+      // If there is a late fee add it
+      if (!empty($this->_participantInfo[$pid]['latefees'])) {
+        $latefee = $this->_participantInfo[$pid]['latefees'];
+        $partTotal = $partTotal + $latefee;
+      }
+      if ($partTotal > 0) {
+        $totalAmount = $totalAmount + $partTotal;
+        // save participant total to participant info
+        $this->_participantInfo[$pid]['participant_total'] = $partTotal;
+
+        $paymentParams['contribution_id'] = $this->_participantInfo[$pid]['contribution_id'];
+        $paymentParams['amount'] = $partTotal;
+
+        $pay = CRM_Paymentui_BAO_Paymentui::apishortcut('PaymentProcessor', 'pay', $paymentParams);
+
+        // Log payment details info to ConfigAndLog
+        if (!empty($pay['values'][0])) {
+          $paymentParamsToPrintToLog = $pay['values'][0];
+          unset($paymentParamsToPrintToLog['credit_card_number']);
+          CRM_Core_Error::debug_var('Info sent to Authorize.net from the partial payment form', $paymentParamsToPrintToLog);
+        }
+
+        // Log participant information just in case
+        CRM_Core_Error::debug_var('Participant Info', $this->_participantInfo[$pid]);
+
+        if (!empty($pay['is_error']) && $pay['is_error'] == 1) {
+          $paymentParamsToPrint = $paymentParams;
+          unset($paymentParamsToPrint['credit_card_number']);
+          CRM_Core_Error::debug_var('Info sent to Authorize.net from the partial payment form', $paymentParamsToPrint);
+          $this->_participantInfo[$pid]['success'] = 0;
+          CRM_Core_Session::setStatus(ts('For %2 - %1 for $ %3. %4', [
+            1 => $this->_participantInfo[$pid]['contact_name'],
+            2 => $this->_participantInfo[$pid]['event_name'],
+            3 => $this->_participantInfo[$pid]['participant_total'],
+            4 => $pay['error_message'],
+          ]), ts('Error Processing Payment'), 'error');
+        }
+        else {
+          // Payment Processed sucessfully
+          if (!empty($pay['values'][0])) {
+            // update contribution to include line items for fees
+            CRM_Paymentui_BAO_Paymentui::update_line_items_for_fees($pid, $pfee, $latefee, $this->_participantInfo[$pid]['contribution_id']);
+
+            // Record payment in CiviCRM
+            $paymentProcessedInfo = CRM_Paymentui_BAO_Paymentui::process_partial_payments($paymentParams, $this->_participantInfo, $pay['values'][0], $pid);
+            $paymentSuccess[$pid] = TRUE;
+            $this->_participantInfo[$pid]['success'] = 1;
+
+            CRM_Core_Session::setStatus(ts('For %2 - %1 for $ %3.', [
+              1 => $this->_participantInfo[$pid]['contact_name'],
+              2 => $this->_participantInfo[$pid]['event_name'],
+              3 => $this->_participantInfo[$pid]['participant_total'],
+            ]), ts('Successfully Processed Payment'), 'success');
+          }
         }
       }
     }
-    elseif (!empty($result['amount'])) {
-      $CCFinancialTrxn = CRM_Paymentui_BAO_Paymentui::createFinancialTrxn($paymentParams);
-      $partialPaymentInfo = $this->_participantInfo;
-      CRM_Core_Error::debug_var('Participant Info', $this->_participantInfo);
+    if (!empty($paymentSuccess)) {
+      // TODO Refactor
+      CRM_Paymentui_BAO_Paymentui::send_receipt($this->_participantInfo, $paymentParams);
 
-      //Process all the partial payments and update the records
-      $paymentProcessedInfo = paymentui_civicrm_process_partial_payments($paymentParams, $this->_participantInfo);
-      // example: https://github.com/civicrm/civicrm-core/blob/648631cd94799e87fe2347487d465b1a7256aa57/tests/phpunit/CRM/Core/Config/MailerTest.php#L75
       parent::postProcess();
-
-      //Define status message
-      $statusMsg = ts('The payment(s) have been processed successfully.');
-      CRM_Core_Session::setStatus($statusMsg, ts('Saved'), 'success');
 
       //Redirect to the same URL
       $url     = CRM_Utils_System::url('civicrm/addpayment', "reset=1");
       $session = CRM_Core_Session::singleton();
       CRM_Utils_System::redirect($url);
+    }
+    if ($totalAmount == 0) {
+      CRM_Core_Session::setStatus(ts('No Payment amount entered'), ts('No Payments Processed'), 'success');
     }
   }
 

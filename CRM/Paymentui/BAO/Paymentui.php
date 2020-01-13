@@ -6,10 +6,46 @@
  *
  */
 class CRM_Paymentui_BAO_Paymentui extends CRM_Event_DAO_Participant {
+
+  /**
+   * Shortcut for api calls
+   * @param  string $entity Entity
+   * @param  string $action Action
+   * @param  array $params params
+   * @return array         results
+   */
+  public static function apishortcut($entity, $action, $params) {
+    $result = [];
+    try {
+      $result = civicrm_api3($entity, $action, $params);
+    }
+    catch (CiviCRM_API3_Exception $e) {
+      $error = $e->getMessage();
+      $result['is_error'] = 1;
+      $result['error_message'] = $error;
+      CRM_Core_Error::debug_log_message(
+        ts('API %3 - %2 Error: %1', array(
+          1 => $error,
+          2 => $action,
+          3 => $entity,
+          'domain' => 'bot.roundlake.paymentui',
+        ))
+      );
+    }
+    return $result;
+  }
+
+  /**
+   * Get Details about Relevant Participants
+   * @param  int $contactID Contact ID of logged in contact
+   * @return array details about all relevant participant records
+   */
   public static function getParticipantInfo($contactID) {
     $relatedContactIDs   = self::getRelatedContacts($contactID);
     $relatedContactIDs[] = $contactID;
     $relContactIDs       = implode(',', $relatedContactIDs);
+    $pendingPayLater     = CRM_Core_DAO::getFieldValue('CRM_Event_BAO_ParticipantStatusType', 'Pending from pay later', 'id', 'name');
+    $partiallyPaid       = CRM_Core_DAO::getFieldValue('CRM_Event_BAO_ParticipantStatusType', 'Partially paid', 'id', 'name');
 
     //Get participant info for the primary and related contacts
     $sql = <<<HERESQL
@@ -22,22 +58,33 @@ FROM civicrm_participant p
   INNER JOIN civicrm_participant_payment pp
     ON ( p.id = pp.participant_id )
 WHERE p.contact_id IN ($relContactIDs)
-  AND (p.status_id = 15 OR p.status_id = 5)
+  AND p.status_id IN ($pendingPayLater, $partiallyPaid)
   AND p.is_test = 0
 HERESQL;
     $dao = CRM_Core_DAO::executeQuery($sql);
     if ($dao->N) {
       while ($dao->fetch()) {
+        $paid = $totalDue = 0;
+        $lineItems = self::apishortcut('LineItem', 'get', ['contribution_id' => $dao->contribution_id]);
+        foreach ($lineItems['values'] as $lineItemID => $lineItemDetails) {
+          if ($lineItemDetails['financial_type_id'] != 1) {
+            $totalDue = $totalDue + $lineItemDetails['line_total'];
+          }
+        }
+        // print_r($lineItems); die();
         // Get the payment details of all the participants
         $paymentDetails = CRM_Contribute_BAO_Contribution::getPaymentInfo($dao->id, 'event', FALSE, TRUE);
+        $paid = $totalDue - $paymentDetails['balance'];
+
+        // print_r($paymentDetails); die();
         //Get display names of the participants and additional participants, if any
         $displayNames   = self::getDisplayNames($dao->id, $dao->display_name);
-        $paymentSched   = self::getLateFees($dao->event_id, $paymentDetails['paid'], $paymentDetails['balance']);
+        $paymentSched   = self::getLateFees($dao->event_id, $paid, $paymentDetails['balance']);
         if ($paymentDetails['balance'] == 0) {
           $paymentSched['totalDue'] = 0;
         }
 
-        // TODO subtract ccfees added by the percentage price field extension
+        // TODO do we need this - subtract ccfees added by the percentage price field extension
         $ccFeesSQL = <<<HERESQL
         SELECT line_total FROM `civicrm_line_item` as li
 JOIN `civicrm_percentagepricesetfield` as p
@@ -52,12 +99,14 @@ HERESQL;
         $participantInfo[$dao->id]['contribution_id'] = $dao->contribution_id;
         $participantInfo[$dao->id]['event_name']      = $dao->title;
         $participantInfo[$dao->id]['contact_name']    = $displayNames;
-        $participantInfo[$dao->id]['total_amount']    = $paymentDetails['total'] - $percentagePriceFee;
-        $participantInfo[$dao->id]['paid']            = $paymentDetails['paid'] - $percentagePriceFee;
-        $participantInfo[$dao->id]['balance']         = $paymentDetails['balance'];
+        $participantInfo[$dao->id]['total_amount']    = $totalDue - $percentagePriceFee;
+        $participantInfo[$dao->id]['paid']            = $paid;
+        $participantInfo[$dao->id]['balance']         = $paymentDetails['balance'] - $percentagePriceFee;
         $participantInfo[$dao->id]['latefees']        = $paymentSched['lateFee'];
-        $participantInfo[$dao->id]['nextDueDate']     = $paymentSched['nextDueDate'];
-        $participantInfo[$dao->id]['totalDue']        = $paymentSched['totalDue'];
+        if (!empty($paymentSched['nextDueDate'])) {
+          $participantInfo[$dao->id]['nextDueDate'] = $paymentSched['nextDueDate'];
+        }
+        $participantInfo[$dao->id]['totalDue']        = $paymentSched['totalDue'] - $percentagePriceFee;
         $participantInfo[$dao->id]['rowClass']        = 'row_' . $dao->id;
         $participantInfo[$dao->id]['payLater']        = $paymentDetails['payLater'];
       }
@@ -69,8 +118,11 @@ HERESQL;
   }
 
   /**
-   * [getLateFees description]
-   * @param  [type] $eventId [description]
+   * Calculate late fees
+   * @param  int $eventId      id of the event
+   * @param  float $amountPaid Amount paid
+   * @param  float $balance    amount left to be paid
+   * @return array             late fee details
    */
   public static function getLateFees($eventId, $amountPaid, $balance) {
     $return = array(
@@ -81,22 +133,14 @@ HERESQL;
       $return['nextDueDate'] = ts('All Paid', array('domain' => 'bot.roundlake.paymentui'));
     }
     else {
-      try {
-        $lateFeeSchedule = civicrm_api3('CustomField', 'getSingle', array(
-          'sequential' => 1,
-          'return' => array("id"),
-          'name' => "event_late_fees",
-          'api.Event.getsingle' => array(
-            'id' => $eventId,
-          ),
-        ));
-      }
-      catch (CiviCRM_API3_Exception $e) {
-        $error = $e->getMessage();
-        CRM_Core_Error::debug_log_message(ts('API Error %1', array(
-          'domain' => 'bot.roundlake.paymentui',
-        )));
-      }
+      $lateFeeSchedule = self::apishortcut('CustomField', 'getSingle', array(
+        'sequential' => 1,
+        'return' => array("id"),
+        'name' => "event_late_fees",
+        'api.Event.getsingle' => array(
+          'id' => $eventId,
+        ),
+      ));
       if (!empty($lateFeeSchedule['api.Event.getsingle']["custom_{$lateFeeSchedule['id']}"])) {
         $fees = self::getFeesFromSettings();
         $feeAmount = CRM_Utils_Array::value('late_fee', $fees, 0);
@@ -126,7 +170,7 @@ HERESQL;
             'diff' => $dueDate - $currentDate,
           );
 
-          if ($amountPaid >= $amountOwed)  {
+          if ($amountPaid >= $amountOwed) {
             $dates['status'] = 'paid';
           }
           elseif ($dueDate >= $currentDate) {
@@ -178,21 +222,12 @@ HERESQL;
    * Checks for Child, Spouse, Child/Ward relationship types
    */
   public static function getRelatedContacts($contactID) {
-    try {
-      $result = civicrm_api3('Relationship', 'get', array(
-        'sequential' => 1,
-        'relationship_type_id' => 1,
-        'contact_id_b' => $contactID,
-        'contact_id_a.is_deleted' => 0,
-      ));
-    }
-    catch (CiviCRM_API3_Exception $e) {
-      $error = $e->getMessage();
-      CRM_Core_Error::debug_log_message(ts('API Error %1', array(
-        'domain' => 'bot.roundlake.paymentui',
-        1 => $error,
-      )));
-    }
+    $result = self::apishortcut('Relationship', 'get', array(
+      'sequential' => 1,
+      'relationship_type_id' => 1,
+      'contact_id_b' => $contactID,
+      'contact_id_a.is_deleted' => 0,
+    ));
     if (!empty($result['values'])) {
       $relatedContactIDs = array();
       foreach ($result['values'] as $relatedContact => $value) {
@@ -206,66 +241,15 @@ HERESQL;
   }
 
   /**
-   * Creates a financial trxn record for the CC transaction of the total amount
+   * Get fees from settings
+   * @return array fees as defined on the settings page
    */
-  public function createFinancialTrxn($payment) {
-    //Set Payment processor to Auth CC
-    //To be changed for switching to live processor
-    $payment_processor_id = CRM_Core_DAO::getFieldValue('CRM_Financial_DAO_PaymentProcessor', 'Credit Card', 'id', 'name');
-    $fromAccountID        = CRM_Core_DAO::getFieldValue('CRM_Financial_DAO_FinancialAccount', 'Accounts Receivable', 'id', 'name');
-    $CCAccountID          = CRM_Core_DAO::getFieldValue('CRM_Financial_DAO_FinancialAccount', 'Payment Processor Account', 'id', 'name');
-    $paymentMethods       = CRM_Contribute_PseudoConstant::paymentInstrument();
-    $CC_id                = array_search('Credit Card', $paymentMethods);
-    $params = array(
-      'to_financial_account_id'   => $CCAccountID,
-      'from_financial_account_id' => $fromAccountID,
-      'trxn_date'                 => date('Ymd'),
-      'total_amount'              => $payment['amount'],
-      'fee_amount'                => '',
-      'net_amount'                => '',
-      'currency'                  => $payment['currencyID'],
-      'status_id'                 => 1,
-      'trxn_id'                   => $payment['trxn_id'],
-      'payment_processor'         => $payment_processor_id,
-      'payment_instrument_id'     => $CC_id,
-    );
-    require_once 'CRM/Core/BAO/FinancialTrxn.php';
-
-    $trxn = new CRM_Financial_DAO_FinancialTrxn();
-    $trxn->copyValues($params);
-    $fids = array();
-    if (!CRM_Utils_Rule::currencyCode($trxn->currency)) {
-      $config = CRM_Core_Config::singleton();
-      $trxn->currency = $config->defaultCurrency;
-    }
-
-    $trxn->save();
-    $entityFinancialTrxnParams = array(
-      'entity_table'      => "civicrm_financial_trxn",
-      'entity_id'         => $trxn->id,
-      'financial_trxn_id' => $trxn->id,
-      'amount'            => $params['total_amount'],
-      'currency'          => $trxn->currency,
-    );
-    $entityTrxn = new CRM_Financial_DAO_EntityFinancialTrxn();
-    $entityTrxn->copyValues($entityFinancialTrxnParams);
-    $entityTrxn->save();
-  }
-
   public static function getFeesFromSettings() {
     $fees = array();
-    try {
-      $existingSetting = civicrm_api3('Setting', 'get', array(
-        'sequential' => 1,
-        'return' => array("paymentui_processingfee", "paymentui_latefee"),
-      ));
-    }
-    catch (CiviCRM_API3_Exception $e) {
-      $error = $e->getMessage();
-      CRM_Core_Error::debug_log_message(
-        ts('API Error: %1', array(1 => $error, 'domain' => 'bot.roundlake.paymentui'))
-      );
-    }
+    $existingSetting = self::apishortcut('Setting', 'get', array(
+      'sequential' => 1,
+      'return' => array("paymentui_processingfee", "paymentui_latefee"),
+    ));
     if (!empty($existingSetting['values'][0]['paymentui_processingfee'])) {
       $fees['processing_fee'] = $existingSetting['values'][0]['paymentui_processingfee'];
     }
@@ -275,6 +259,13 @@ HERESQL;
     return $fees;
   }
 
+  /**
+   * Build Email html
+   * @param  array $participantInfo  Information about the participant
+   * @param  boolean $receipt         is this a reciept or not
+   * @param  integer $processingFee   processing fee
+   * @return string                   Email text
+   */
   public static function buildEmailTable($participantInfo, $receipt = FALSE, $processingFee = 0) {
     $table = '<table class="partialPayment" border="1" cellpadding="4" cellspacing="1" style="border-collapse: collapse; text-align: left">
      <thead><tr>
@@ -283,63 +274,75 @@ HERESQL;
        <th>Cost of Program</th>
        <th>Paid to Date</th>
        <th>Total Balance Owed</th>
-    ';
-    if (!$receipt) {
-      $table .= '
-        <th>Late Fee Applies On</th>
-        <th>Late Fees</th>
-        <th>Next Payment Due Amount</th>
-      </tr></thead><tbody>';
-      foreach ($participantInfo as $row) {
-        $table .= "
-         <tr class=" . $row['rowClass'] . ">
-           <td>" . $row['event_name'] . "</td>
-           <td>" . $row['contact_name'] . "</td>
-           <td> $" . self::formatNumberAsMoney($row['total_amount']) . "</td>
-           <td> $" . self::formatNumberAsMoney($row['paid']) . "</td>
-           <td> $" . self::formatNumberAsMoney($row['balance']) . "</td>
-           <td>" . $row['nextDueDate'] . "</td>
-           <td> $" . self::formatNumberAsMoney(floatval($row['latefees'])) . "</td>
-           <td> $" . self::formatNumberAsMoney($row['totalDue']) . "</td>
-         </tr>
-       ";
-      }
-      $table .= "</tbody></table>";
+       <th>Late Fee Applies On</th>
+       <th>Late Fees</th>
+       <th>Next Payment Due Amount</th>
+     </tr></thead><tbody>';
+    foreach ($participantInfo as $row) {
+      $table .= "
+       <tr class=" . $row['rowClass'] . ">
+         <td>" . $row['event_name'] . "</td>
+         <td>" . $row['contact_name'] . "</td>
+         <td> $" . self::formatNumberAsMoney($row['total_amount']) . "</td>
+         <td> $" . self::formatNumberAsMoney($row['paid']) . "</td>
+         <td> $" . self::formatNumberAsMoney($row['balance']) . "</td>
+         <td>" . $row['nextDueDate'] . "</td>
+         <td> $" . self::formatNumberAsMoney(floatval($row['latefees'])) . "</td>
+         <td> $" . self::formatNumberAsMoney($row['totalDue']) . "</td>
+       </tr>
+     ";
     }
-    if ($receipt) {
-      $lateFeeTotal = 0;
-      $totalAmountPaid = 0;
-      $table .= '
-        <th>Late Fees</th>
-        <th>Payment Made</th>
-      </tr></thead><tbody>';
-      foreach ($participantInfo as $row) {
+    $table .= "</tbody></table>";
+    return $table;
+  }
+
+  /**
+   * Build Receipt Text
+   * @param  array $participantInfo  details about oayments processed
+   * @return [type]                  [description]
+   */
+  public static function buildReceiptEmailTable($participantInfo) {
+    $lateFeeTotal = 0;
+    $totalAmountPaid = 0;
+    $table = '<table class="partialPayment" border="1" cellpadding="4" cellspacing="1" style="border-collapse: collapse; text-align: left">
+     <thead><tr>
+       <th>Participant</th>
+       <th>Cost of Program</th>
+       <th>Paid to Date</th>
+       <th>Total Balance Owed</th>
+       <th>Late Fee</th>
+       <th>Processing Fee</th>
+       <th>Payment</th>
+       <th>Total Charged for this Participant</th>
+    </tr></thead><tbody>';
+    foreach ($participantInfo as $row) {
+      if (!empty($row['participant_total']) && $row['success'] == 1) {
         $table .= "
          <tr class=" . $row['rowClass'] . ">
-           <td>" . $row['event_name'] . "</td>
-           <td>" . $row['contact_name'] . "</td>
+           <td>" . $row['event_name'] . " - " . $row['contact_name'] . "</td>
            <td> $" . self::formatNumberAsMoney($row['total_amount']) . "</td>
            <td> $" . self::formatNumberAsMoney(($row['paid'] + $row['partial_payment_pay'])) . "</td>
            <td> $" . self::formatNumberAsMoney(($row['balance'] - $row['partial_payment_pay'])) . "</td>
            <td> $" . self::formatNumberAsMoney(floatval($row['latefees'])) . "</td>
-           <td> $" . self::formatNumberAsMoney($row['partial_payment_pay']) . "</td>
+           <td> $" . self::formatNumberAsMoney(floatval($row['processingfees'])) . "</td>
+           <td> $" . self::formatNumberAsMoney(floatval($row['partial_payment_pay'])) . "</td>
+           <td> $" . self::formatNumberAsMoney(floatval($row['participant_total'])) . "</td>
          </tr>
        ";
-        if (!empty($row['latefees'])) {
-          $lateFeeTotal = $lateFeeTotal + $row['latefees'];
-        }
-        if (!empty($row['partial_payment_pay'])) {
-          $totalAmountPaid = $totalAmountPaid + $row['partial_payment_pay'];
-        }
+        $totalAmountPaid = $totalAmountPaid + $row['participant_total'];
       }
-      $table .= "</tbody></table><br>";
-      $table .= "<p><strong>Late Fees:</strong> $ " . self::formatNumberAsMoney(floatval($lateFeeTotal)) . " </p>";
-      $table .= "<p><strong>Processing Fee:</strong> $ " . self::formatNumberAsMoney(floatval($processingFee)) . " </p>";
-      $table .= "<p><strong>Total:</strong> $ " . self::formatNumberAsMoney(floatval($totalAmountPaid) + floatval($lateFeeTotal) + floatval($processingFee)) . " </p>";
     }
+    $table .= "</tbody></table><br>";
+    $table .= "<p><strong>Total:</strong> $ " . self::formatNumberAsMoney(floatval($totalAmountPaid)) . " </p>";
+
     return $table;
   }
 
+  /**
+   * Simple table token
+   * @param  array $participantInfo array of information about the participant
+   * @return string                 simple table token text
+   */
   public static function buildSimpleEmailTable($participantInfo) {
     $table = '<table class="partialPayment" cellspacing="5" cellpadding="5" style="border-collapse: collapse; text-align: left">
      <thead align="left"><tr>
@@ -378,6 +381,120 @@ HERESQL;
 
   public static function formatNumberAsMoney($number) {
     return number_format($number, 2, '.', ',');
+  }
+
+  /**
+   * Function to create records of relevant payments in CiviCRM
+   * @param $paymentParams - Payment Processor parameters
+   * @param $participantInfo - participantID as key and contributionID, ContactID, PayLater, Partial Payment Amount
+   * @param $payResponse - response from paymentprocessor.pay call
+   * @param $pid - participant id
+   * @return participantInfo array with 'Success' flag
+   */
+  public static function process_partial_payments($paymentParams, &$participantInfo, $payResponse, $pid) {
+
+    // Update participant status for pending from pay later registrations
+    //Update participant Status from 'Pending from Pay Later' to 'Partially Paid'
+    $pendingPayLater   = CRM_Core_DAO::getFieldValue('CRM_Event_BAO_ParticipantStatusType', 'Pending from pay later', 'id', 'name');
+    $participantStatus = CRM_Core_DAO::getFieldValue('CRM_Event_BAO_Participant', $pid, 'status_id', 'id');
+
+    if ($participantStatus == $pendingPayLater) {
+      $trxnRecord = CRM_Paymentui_BAO_Paymentui::apishortcut('Participant', 'create', [
+        'id' => $pid,
+        'status_id' => "Partially paid",
+      ]);
+    }
+
+    //Making sure that payment params has the correct amount for partial payment
+    $paymentParams['total_amount'] = $paymentParams['amount'];
+    $paymentParams['payment_instrument_id'] = 1;
+
+    // Add additional financial transactions for each partial payment
+    // $trxnRecord = CRM_Paymentui_BAO_Paymentui::recordAdditionalPayment($participantInfo[$pid]['contribution_id'], $paymentParams, 'owed', $pId);
+    $paymentParams['participant_id'] = $pid;
+    $paymentParams['entity_id'] = $paymentParams['contribution_id'] = $participantInfo[$pid]['contribution_id'];
+    $paymentParams['is_send_contribution_notification'] = FALSE;
+    $paymentParams['trxn_id'] = $payResponse['trxn_id'];
+    $trxnRecord = CRM_Paymentui_BAO_Paymentui::apishortcut('Payment', 'create', $paymentParams);
+    if (!empty($trxnRecord['id'])) {
+      $participantInfo[$pid]['success'] = 1;
+    }
+    else {
+      CRM_Core_Error::debug_var('Payment Create Params', $paymentParams);
+      CRM_Core_Error::debug_var('Payment Create', $trxnRecord);
+    }
+
+    return $participantInfo;
+  }
+
+  /**
+   * Send Receipt
+   * @param  array $participantInfo         details about particpant
+   * @param  array $paymentParams           details about payment
+   */
+  public static function send_receipt($participantInfo, $paymentParams) {
+    $receiptTable = CRM_Paymentui_BAO_Paymentui::buildReceiptEmailTable($participantInfo);
+    $body = "<p>Thank you for completing your payment. See details below:</p>
+      <div>$receiptTable</div>
+      <p>Please contact us with any concerns.</p>
+      <p>Phone 770-455-9622</p>
+      <p>Email us at studentaccounts@georgiacivics.org</p>";
+    $mailParams = array(
+      'from' => 'Student Accounts <studentaccounts@georgiacivics.org>',
+      'toName' => "{$paymentParams['first_name']} {$paymentParams['last_name']}",
+      'toEmail' => $paymentParams['email'],
+      'cc'   => 'studentaccounts@georgiacivics.org',
+      'bcc' => '',
+      'subject' => 'Your Account Statement for Student Travel',
+      'text' => $body,
+      'html' => $body,
+      'replyTo' => 'reply-to header in the email',
+    );
+    $receiptEmail = CRM_Utils_Mail::send($mailParams);
+  }
+
+  /**
+   * Create Line items for fees
+   * @param  int $pid        Participant Id
+   * @param  float $pfee     Processing Fee
+   * @param  int $latefee    Late Fee
+   * @param  int $contribId  Contribution ID
+   */
+  public static function update_line_items_for_fees($pid, $pfee, $latefee, $contribId) {
+    // get the Date
+    $paymentmade = date("F j, Y, g:i a");
+    // Create new line items for each fee
+    if ($latefee > 0) {
+      $lateFeeLineItem = self::apishortcut('LineItem', 'create', [
+        'entity_table' => "civicrm_participant",
+        'qty' => 1,
+        'unit_price' => $latefee,
+        'line_total' => $latefee,
+        'non_deductible_amount' => 0,
+        'tax_amount' => 0,
+        'price_field_id' => "",
+        'contribution_id' => $contribId,
+        'label' => "Late Fee - $paymentmade",
+        'entity_id' => $pid,
+        'financial_type_id' => "Donation",
+      ]);
+    }
+
+    if ($pfee > 0) {
+      $pFeeLineItem = self::apishortcut('LineItem', 'create', [
+        'entity_table' => "civicrm_participant",
+        'qty' => 1,
+        'unit_price' => $pfee,
+        'line_total' => $pfee,
+        'contribution_id' => $contribId,
+        'label' => "Processing Fee - {$paymentmade}",
+        'entity_id' => $pid,
+        'non_deductible_amount' => 0,
+        'tax_amount' => 0,
+        'price_field_id' => "",
+        'financial_type_id' => "Donation",
+      ]);
+    }
   }
 
 }
