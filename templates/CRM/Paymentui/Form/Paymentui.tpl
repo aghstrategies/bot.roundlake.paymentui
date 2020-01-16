@@ -1,5 +1,5 @@
 {* HEADER *}
-<div class="form-item">
+<div class="form-item partialPaymentGrid">
 	<fieldset>
 	<legend>{ts}{$displayName}{/ts}</legend>
 		<table class=" form-layout">
@@ -13,12 +13,11 @@
 						</thead>
 						{foreach from=$participantInfo item=row}
 							<tr class="{$row.rowClass}">
-								<td class="">{$row.event_name}</td>
-								<td class="">{$row.contact_name}</td>
-								<td class="">{$row.total_amount|crmMoney}</td>
-								<td class="">{$row.paid|crmMoney}</td>
-								<td class="balance">{$row.balance|crmMoney}</td>
-								<td class="payment">{$form.payment[$row.pid].html|crmMoney}</td>
+								<td class="registrant">{$row.event_name} - {$row.contact_name}</td>
+								<td class="mon">{$row.total_amount|crmMoney}</td>
+								<td class="mon">{$row.paid|crmMoney}</td>
+								<td class="mon balance">{$row.balance|crmMoney}</td>
+								<td class="mon payment">{$form.payment[$row.pid].html|crmMoney}</td>
 
 							</tr>
 
@@ -26,7 +25,7 @@
 							{if $form.latefee[$row.pid].html}
 
 							<tr class="{$row.rowClass}-latefees">
-								<td colspan=4></td>
+								<td colspan=3></td>
 								<td class="balance">
 									<strong>Late Fee</strong></br>
 								</td>
@@ -38,7 +37,7 @@
 
 							{* Processing Fee Row *}
 							<tr class="{$row.rowClass}-pfees">
-								<td colspan=2></td>
+								<td colspan=1></td>
 								<td colspan=3 class="balance">
 									<strong>Processing Fee</strong></br>
 								</td>
@@ -49,7 +48,7 @@
 
 							{* Subtotal Row *}
 							<tr class="{$row.rowClass}-subtotal">
-								<td colspan=2></td>
+								<td colspan=1></td>
 								<td colspan=3 class="balance">
 									<strong>Total for Registrant</strong></br>
 								</td>
@@ -61,7 +60,7 @@
 						{/foreach}
 						{if $contactId}
 						<thead class="sticky">
-									<td colspan = 5 scope="col"><strong>Total For All Registrants</strong></th>
+									<td colspan = 4 scope="col"><strong>Total For All Registrants</strong></th>
 									<td><span class='money'>$ </span><span name='total' id ='total'>0</span></td>
 						</thead>
 						{/if}

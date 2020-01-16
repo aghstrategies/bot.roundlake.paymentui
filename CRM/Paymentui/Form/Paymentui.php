@@ -73,7 +73,7 @@ class CRM_Paymentui_Form_Paymentui extends CRM_Core_Form {
     $this->assign('displayName', $displayName);
 
     //Set column headers for the table
-    $columnHeaders = array('Event', 'Registrant', 'Cost', 'Paid to Date', 'Owed', 'Payment');
+    $columnHeaders = array('Event - Registrant', 'Cost', 'Paid to Date', 'Owed', 'Payment');
     $this->assign('columnHeaders', $columnHeaders);
 
     //Get Info about this contact (and this contacts related contacts) Registrations
