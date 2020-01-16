@@ -38,8 +38,8 @@
 
 							{* Processing Fee Row *}
 							<tr class="{$row.rowClass}-pfees">
-								<td colspan=4></td>
-								<td class="balance">
+								<td colspan=2></td>
+								<td colspan=3 class="balance">
 									<strong>Processing Fee</strong></br>
 								</td>
 								<td class="payment">
@@ -49,9 +49,9 @@
 
 							{* Subtotal Row *}
 							<tr class="{$row.rowClass}-subtotal">
-								<td colspan=4></td>
-								<td class="balance">
-									<strong>Total for this Participant</strong></br>
+								<td colspan=2></td>
+								<td colspan=3 class="balance">
+									<strong>Total for Registrant</strong></br>
 								</td>
 								<td class="payment">
 									<span class="{$row.rowClass}-latefee">{$form.subtotal[$row.pid].html|crmMoney}
@@ -61,8 +61,8 @@
 						{/foreach}
 						{if $contactId}
 						<thead class="sticky">
-									<td colspan = 5 scope="col"><strong>Total For All Participants</strong></th>
-									<td class="font-size12pt "><span>$ </span><span name='total' id ='total'>0</span></td>
+									<td colspan = 5 scope="col"><strong>Total For All Registrants</strong></th>
+									<td><span class='money'>$ </span><span name='total' id ='total'>0</span></td>
 						</thead>
 						{/if}
 					</table>
